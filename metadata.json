@@ -1,0 +1,6 @@
+{
+  "name": "Impozitor Pro",
+  "description": "Professional commercial print imposition and digital die-cut (Print & Cut) prepress studio",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
