@@ -84,6 +84,12 @@
         <button id="tabBtnSettings" data-i18n="tab_settings" class="px-2 py-1 rounded-lg text-zinc-400 hover:text-white transition">Nustatymai</button>
       </div>
 
+      <!-- Kalbos perjungiklis (LT / EN) mobilioje juostoje -->
+      <div class="flex items-center bg-zinc-950 p-0.5 rounded-xl border border-zinc-800 shadow-inner shrink-0">
+        <button id="btnLangLtMobile" class="px-2 py-0.5 rounded-lg text-[10px] font-bold font-mono transition bg-amber-500 text-zinc-950 font-black cursor-pointer shadow">LT</button>
+        <button id="btnLangEnMobile" class="px-2 py-0.5 rounded-lg text-[10px] font-bold font-mono transition text-zinc-400 hover:text-white cursor-pointer">EN</button>
+      </div>
+
       <!-- PC / Mobilaus rodinio jungiklis mobilioje juostoje -->
       <button id="btnLayoutToggleMobile" class="layout-toggle-btn flex items-center gap-1 px-2 py-1 bg-zinc-950 hover:bg-zinc-800 text-amber-400 border border-amber-500/40 rounded-xl transition text-[10px] font-bold font-mono cursor-pointer shadow-inner shrink-0" title="Perjungti tarp PC ir Mobilaus rodinio">
         <i class="layout-toggle-icon fa-solid fa-desktop text-[10px]"></i>
@@ -187,6 +193,9 @@
           <button id="btnZoomResetPan" class="w-6 h-6 sm:w-7 sm:h-7 flex items-center justify-center text-zinc-400 hover:text-amber-400 hover:bg-zinc-800 rounded-lg transition cursor-pointer" title="Centruoti lanką">
             <i class="fa-solid fa-arrows-to-dot text-[10px]"></i>
           </button>
+          <button id="btnRotateView" class="w-6 h-6 sm:w-7 sm:h-7 flex items-center justify-center text-zinc-400 hover:text-amber-400 hover:bg-zinc-800 rounded-lg transition cursor-pointer" title="Pasukti vaizdą (90°)">
+            <i class="fa-solid fa-rotate-right text-[10px]"></i>
+          </button>
         </div>
 
         <!-- Drag & Drop PDF įkėlimo sluoksnis -->
@@ -276,6 +285,24 @@
 
       <div class="p-3 space-y-4 pb-16">
         
+        <!-- AI PREPRESS COPILOT -->
+        <div class="p-2.5 bg-gradient-to-r from-amber-500/10 to-orange-500/10 rounded-xl border border-amber-500/30 space-y-2">
+          <div class="flex items-center justify-between">
+            <span class="text-[10px] font-bold uppercase tracking-wider text-amber-400 font-mono flex items-center gap-1.5">
+              <i class="fa-solid fa-wand-magic-sparkles"></i> AI Impozitorius
+            </span>
+            <button id="btnAiKeySettings" type="button" class="text-[9px] text-zinc-400 hover:text-amber-400 font-mono cursor-pointer">
+              <i class="fa-solid fa-key"></i> Raktas
+            </button>
+          </div>
+          <div class="flex gap-1.5">
+            <input type="text" id="inputAiPrompt" placeholder="pvz., 90x50 vizitinės ant SRA3, autofit..." class="flex-1 bg-zinc-950 border border-zinc-700 rounded-lg px-2.5 py-1.5 text-xs text-white">
+            <button id="btnRunAiPrompt" type="button" class="px-3 py-1.5 bg-amber-500 text-zinc-950 font-black text-xs rounded-lg">
+              <i class="fa-solid fa-bolt"></i>
+            </button>
+          </div>
+        </div>
+
         <!-- 1. Impozicijos Režimas -->
         <div class="space-y-1.5 bg-zinc-900/90 p-2.5 rounded-xl border border-zinc-800">
           <label class="text-[10px] font-bold uppercase tracking-wider text-zinc-400 font-mono flex items-center justify-between">
@@ -287,6 +314,7 @@
             <option value="nup">N-Up / Dauginimas (Step & Repeat)</option>
             <option value="cutstack">Pjauk ir krauk (Cut & Stack)</option>
             <option value="signatures">Knygos lankai (Signatures 16-up)</option>
+            <option value="manual">✋ Rankinis (Spausk ant langelio)</option>
           </select>
         </div>
 
@@ -540,37 +568,41 @@
               <input type="checkbox" id="checkCropMarks" checked class="rounded bg-zinc-950 border-zinc-700 text-amber-500 focus:ring-0">
               <span class="font-bold text-amber-300">Pjovimo žymės</span>
             </label>
+            <label class="flex items-center gap-1.5 cursor-pointer text-[11px]" title="Minimalios žymės tik išoriniame lanko perimetre (be vidinių žymių tarpuose)">
+              <input type="checkbox" id="checkMinimalCrops" checked class="rounded bg-zinc-950 border-zinc-700 text-amber-500 focus:ring-0">
+              <span id="labelMinimalCrops" class="font-medium text-amber-400">Minimalios žymės (tik išorinis perimetras)</span>
+            </label>
             <label class="flex items-center gap-1.5 cursor-pointer text-[11px]">
-              <input type="checkbox" id="checkFoldMarks" checked class="rounded bg-zinc-950 border-zinc-700 text-amber-500 focus:ring-0">
+              <input type="checkbox" id="checkFoldMarks" class="rounded bg-zinc-950 border-zinc-700 text-amber-500 focus:ring-0">
               <span class="font-medium">Lankstymo žymės</span>
             </label>
             <label class="flex items-center gap-1.5 cursor-pointer text-[11px]">
-              <input type="checkbox" id="checkCenterMarks" checked class="rounded bg-zinc-950 border-zinc-700 text-amber-500 focus:ring-0">
+              <input type="checkbox" id="checkCenterMarks" class="rounded bg-zinc-950 border-zinc-700 text-amber-500 focus:ring-0">
               <span class="font-medium">Centro / Ašinės</span>
             </label>
             <label class="flex items-center gap-1.5 cursor-pointer text-[11px]">
-              <input type="checkbox" id="checkRegTargets" checked class="rounded bg-zinc-950 border-zinc-700 text-amber-500 focus:ring-0">
+              <input type="checkbox" id="checkRegTargets" class="rounded bg-zinc-950 border-zinc-700 text-amber-500 focus:ring-0">
               <span class="font-medium">Taikiniai (Reg)</span>
             </label>
             <label class="flex items-center gap-1.5 cursor-pointer text-[11px]">
-              <input type="checkbox" id="checkCmykBars" checked class="rounded bg-zinc-950 border-zinc-700 text-amber-500 focus:ring-0">
+              <input type="checkbox" id="checkCmykBars" class="rounded bg-zinc-950 border-zinc-700 text-amber-500 focus:ring-0">
               <span class="font-medium">CMYK juostelė</span>
             </label>
             <label class="flex items-center gap-1.5 cursor-pointer text-[11px]">
-              <input type="checkbox" id="checkSlugLine" checked class="rounded bg-zinc-950 border-zinc-700 text-amber-500 focus:ring-0">
+              <input type="checkbox" id="checkSlugLine" class="rounded bg-zinc-950 border-zinc-700 text-amber-500 focus:ring-0">
               <span class="font-medium">Info eilutė (Slug)</span>
             </label>
             
             <label class="flex items-center gap-1.5 cursor-pointer text-[11px]" title="Laiptelis ant nugarėlės lankų surinkimo kontrolei">
-              <input type="checkbox" id="checkCollatingMark" checked class="rounded bg-zinc-950 border-zinc-700 text-amber-500 focus:ring-0">
+              <input type="checkbox" id="checkCollatingMark" class="rounded bg-zinc-950 border-zinc-700 text-amber-500 focus:ring-0">
               <span class="font-medium text-zinc-300">Surinkimo laiptelis</span>
             </label>
             <label class="flex items-center gap-1.5 cursor-pointer text-[11px]" title="Rodyklė nurodanti popieriaus padavimo/griebtuvo kraštą">
-              <input type="checkbox" id="checkGripperMark" checked class="rounded bg-zinc-950 border-zinc-700 text-amber-500 focus:ring-0">
+              <input type="checkbox" id="checkGripperMark" class="rounded bg-zinc-950 border-zinc-700 text-amber-500 focus:ring-0">
               <span class="font-medium text-zinc-300">Griebtuvo žymė</span>
             </label>
             <label class="flex items-center gap-1.5 cursor-pointer text-[11px] col-span-2" title="Puslapių numerių užrašai prie kiekvieno pjūvio">
-              <input type="checkbox" id="checkPageLabels" checked class="rounded bg-zinc-950 border-zinc-700 text-amber-500 focus:ring-0">
+              <input type="checkbox" id="checkPageLabels" class="rounded bg-zinc-950 border-zinc-700 text-amber-500 focus:ring-0">
               <span class="font-medium text-zinc-300">Puslapių numeriai prie pjūvių</span>
             </label>
           </div>
@@ -660,10 +692,23 @@
           </div>
 
           <div class="space-y-2 text-xs">
-            <label class="flex items-center gap-2 cursor-pointer">
-              <input type="checkbox" id="checkCutContourEnabled" class="rounded bg-zinc-950 border-zinc-700 text-fuchsia-500 focus:ring-0">
-              <span class="text-zinc-200 font-bold text-[11px]">Generuoti kirtimo lanką (Cut Sheet)</span>
-            </label>
+            <div class="flex items-center justify-between gap-2">
+              <label class="flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" id="checkCutContourEnabled" class="rounded bg-zinc-950 border-zinc-700 text-fuchsia-500 focus:ring-0">
+                <span class="text-zinc-200 font-bold text-[11px]">Generuoti kirtimo lanką (Cut Sheet)</span>
+              </label>
+              <button type="button" id="btnDemoSticker" class="px-2 py-0.5 rounded bg-fuchsia-950 hover:bg-fuchsia-900 border border-fuchsia-700 text-fuchsia-300 text-[10px] font-bold flex items-center gap-1 cursor-pointer transition shadow-sm" title="Užkrauti demonstracinį apvalų lipduką su permatomu fonu">
+                <span>★ Demo Lipdukas</span>
+              </button>
+            </div>
+
+            <div class="pt-1">
+              <label class="text-[9px] text-zinc-400 block mb-0.5">Kontūro tipas:</label>
+              <select id="selectContourMode" class="w-full bg-zinc-950 border border-fuchsia-500/50 rounded px-1.5 py-1 text-xs font-medium text-zinc-200 cursor-pointer">
+                <option value="shape">Pagal objekto formą (Alpha / Lipduko kontūras)</option>
+                <option value="box">Stačiakampis (Pagal gaminio Trim liniją)</option>
+              </select>
+            </div>
 
             <div class="pt-1 border-t border-zinc-800/80">
               <div class="flex items-center justify-between mb-1">
@@ -770,6 +815,68 @@
     </div>
   </div>
 
+  <!-- MODAL: GEMINI API KEY -->
+  <div id="modalApiKey" class="fixed inset-0 bg-zinc-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+    <div class="bg-zinc-900 border border-zinc-800 rounded-2xl w-full max-w-sm p-4 shadow-2xl space-y-3">
+      <div class="flex items-center justify-between border-b border-zinc-800 pb-2">
+        <h3 class="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-1.5">
+          <i class="fa-solid fa-key text-amber-400"></i> Gemini API Raktas
+        </h3>
+        <button id="btnCloseAiKeyModal" type="button" class="text-zinc-400 hover:text-white text-xs cursor-pointer"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+      <div class="space-y-2 text-xs">
+        <p class="text-zinc-400 text-[11px] leading-relaxed">
+          Įveskite savo Google Gemini API raktą AI Prepress Copilot funkcijoms naudoti. Raktas saugomas tik jūsų naršyklės atmintyje (<code class="text-amber-300 bg-zinc-950 px-1 rounded">localStorage</code>).
+        </p>
+        <div>
+          <label class="text-[10px] text-zinc-400 font-mono block mb-1">API Raktas:</label>
+          <input type="password" id="inputGeminiApiKey" placeholder="AIzaSy..." class="w-full bg-zinc-950 border border-zinc-700 focus:border-amber-500 rounded-lg px-2.5 py-1.5 text-xs text-white font-mono">
+        </div>
+      </div>
+      <div class="flex items-center justify-end gap-2 pt-2 border-t border-zinc-800">
+        <button id="btnCancelAiKeyModal" type="button" class="px-3 py-1 rounded-lg text-xs text-zinc-400 hover:text-white cursor-pointer">Atšaukti</button>
+        <button id="btnSaveAiKey" type="button" class="px-3 py-1 rounded-lg text-xs font-black bg-amber-500 hover:bg-amber-400 text-zinc-950 shadow cursor-pointer">Išsaugoti Raktą</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: MANUAUS LANGELIO NUSTATYMAI -->
+  <div id="slotEditModal" class="fixed inset-0 bg-zinc-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+    <div class="bg-zinc-900 border border-zinc-800 rounded-2xl w-full max-w-sm p-4 shadow-2xl space-y-3">
+      <div class="flex items-center justify-between border-b border-zinc-800 pb-2">
+        <h3 id="slotModalTitle" class="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-1.5">
+          <i class="fa-solid fa-square-pen text-amber-400"></i> Langelio nustatymai
+        </h3>
+        <button id="btnCloseSlotModal" type="button" class="text-zinc-400 hover:text-white text-xs cursor-pointer"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+      
+      <div class="space-y-3 text-xs">
+        <div>
+          <label class="text-[10px] text-zinc-400 font-mono block mb-1">PDF Puslapio numeris:</label>
+          <div class="flex items-center gap-1.5">
+            <input type="number" id="inputSlotPageNum" min="1" placeholder="1" class="flex-1 bg-zinc-950 border border-zinc-700 focus:border-amber-500 rounded-lg px-2.5 py-1.5 text-xs text-white font-mono">
+            <button id="btnSetSlotEmpty" type="button" class="px-2.5 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-lg text-xs font-bold transition cursor-pointer">Tuščias</button>
+          </div>
+        </div>
+
+        <div>
+          <label class="text-[10px] text-zinc-400 font-mono block mb-1">Pasukimas (Kampas):</label>
+          <div class="grid grid-cols-4 gap-1">
+            <button type="button" class="btn-slot-rot px-2 py-1.5 rounded-lg border border-zinc-700 text-xs font-mono font-bold transition cursor-pointer text-center bg-amber-500 text-zinc-950" data-rot="0">0°</button>
+            <button type="button" class="btn-slot-rot px-2 py-1.5 rounded-lg border border-zinc-700 text-xs font-mono font-bold transition cursor-pointer text-center bg-zinc-800 text-zinc-300 hover:text-white" data-rot="90">90°</button>
+            <button type="button" class="btn-slot-rot px-2 py-1.5 rounded-lg border border-zinc-700 text-xs font-mono font-bold transition cursor-pointer text-center bg-zinc-800 text-zinc-300 hover:text-white" data-rot="180">180°</button>
+            <button type="button" class="btn-slot-rot px-2 py-1.5 rounded-lg border border-zinc-700 text-xs font-mono font-bold transition cursor-pointer text-center bg-zinc-800 text-zinc-300 hover:text-white" data-rot="270">270°</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="flex items-center justify-end gap-2 pt-2 border-t border-zinc-800">
+        <button id="btnCancelSlotModal" type="button" class="px-3 py-1 rounded-lg text-xs text-zinc-400 hover:text-white cursor-pointer">Atšaukti</button>
+        <button id="btnSaveSlotConfig" type="button" class="px-3 py-1 rounded-lg text-xs font-black bg-amber-500 hover:bg-amber-400 text-zinc-950 shadow cursor-pointer">Išsaugoti</button>
+      </div>
+    </div>
+  </div>
+
   <script>
     // -------------------------------------------------------------
     // 1. APPLICATION STATE
@@ -838,16 +945,17 @@
       cropOffset: 2,
       markInking: 'reg',
 
-      foldMarks: true,
-      centerMarks: true,
-      regTargets: true,
-      cmykBars: true,
-      slugLine: true,
-      collatingMarks: true,
-      gripperMark: true,
-      pageLabels: true,
+      foldMarks: false,
+      centerMarks: false,
+      regTargets: false,
+      cmykBars: false,
+      slugLine: false,
+      collatingMarks: false,
+      gripperMark: false,
+      pageLabels: false,
 
       cutContourEnabled: false,
+      contourMode: 'shape',
       cutOffsetMm: 2,
       plotterMarks: true,
       exportBothSheets: true,
@@ -856,12 +964,18 @@
       currentSheetIndex: 0,
       currentSide: 'front',
       zoom: 0.92,
+      viewRotation: 0,
       panX: 0,
       panY: 0,
       totalSheets: 4,
 
       layoutMode: 'desktop',
       mobileTab: 'split',
+
+      manualItems: [],
+      selectedItemId: null,
+      manualSlots: {},
+      activeEditingSlot: null,
 
       autoPlayActive: false,
       autoPlayTimer: null
@@ -1257,15 +1371,18 @@
       } catch (e) {}
 
       // 1. Kalbos mygtukų aktyvumo stilius
-      if (UI.btnLangLt && UI.btnLangEn) {
+      const updateLangBtnStyle = (btnLt, btnEn) => {
+        if (!btnLt || !btnEn) return;
         if (isEn) {
-          UI.btnLangLt.className = 'px-2 py-0.5 rounded-lg text-[10px] font-bold font-mono transition text-zinc-400 hover:text-white cursor-pointer';
-          UI.btnLangEn.className = 'px-2 py-0.5 rounded-lg text-[10px] font-bold font-mono transition bg-amber-500 text-zinc-950 font-black cursor-pointer shadow';
+          btnLt.className = 'px-2 py-0.5 rounded-lg text-[10px] font-bold font-mono transition text-zinc-400 hover:text-white cursor-pointer';
+          btnEn.className = 'px-2 py-0.5 rounded-lg text-[10px] font-bold font-mono transition bg-amber-500 text-zinc-950 font-black cursor-pointer shadow';
         } else {
-          UI.btnLangLt.className = 'px-2 py-0.5 rounded-lg text-[10px] font-bold font-mono transition bg-amber-500 text-zinc-950 font-black cursor-pointer shadow';
-          UI.btnLangEn.className = 'px-2 py-0.5 rounded-lg text-[10px] font-bold font-mono transition text-zinc-400 hover:text-white cursor-pointer';
+          btnLt.className = 'px-2 py-0.5 rounded-lg text-[10px] font-bold font-mono transition bg-amber-500 text-zinc-950 font-black cursor-pointer shadow';
+          btnEn.className = 'px-2 py-0.5 rounded-lg text-[10px] font-bold font-mono transition text-zinc-400 hover:text-white cursor-pointer';
         }
-      }
+      };
+      updateLangBtnStyle(UI.btnLangLt, UI.btnLangEn);
+      updateLangBtnStyle(UI.btnLangLtMobile, UI.btnLangEnMobile);
 
       // Pagalbiniai metodai saugiam DOM keitimui
       const setText = (sel, text) => {
@@ -1337,6 +1454,9 @@
         selMode.options[1].textContent = isEn ? 'N-Up / Step & Repeat' : 'N-Up / Dauginimas (Step & Repeat)';
         selMode.options[2].textContent = isEn ? 'Cut & Stack' : 'Pjauk ir krauk (Cut & Stack)';
         selMode.options[3].textContent = isEn ? 'Book Signatures (16-up)' : 'Knygos lankai (Signatures 16-up)';
+        if (selMode.options[4]) {
+          selMode.options[4].textContent = isEn ? '✋ Manual (Click cell on canvas)' : '✋ Rankinis (Spausk ant langelio)';
+        }
       }
 
       // 5. Skirsnis 1.5: Gaminio Formatas (Trim)
@@ -1506,8 +1626,10 @@
       const presetModalH = document.querySelector('#savePresetModalElement h3');
       if (presetModalH) presetModalH.innerHTML = `<i class="fa-solid fa-bookmark text-amber-400"></i> ${isEn ? 'Save as Preset' : 'Išsaugoti kaip šabloną'}`;
       setPlaceholder('#modalPresetName', isEn ? 'e.g., Business Cards 24-up SRA3 4mm' : 'pvz., Vizitinės 24-up SRA3 4mm');
-      setText('#modalPresetName')?.parentElement?.querySelector('label', isEn ? 'Preset Name:' : 'Šablono pavadinimas:');
-      setText('#modalPresetCategory')?.parentElement?.querySelector('label', isEn ? 'Category:' : 'Kategorija:');
+      const lblPresetName = document.querySelector('#modalPresetName')?.parentElement?.querySelector('label');
+      if (lblPresetName) lblPresetName.textContent = isEn ? 'Preset Name:' : 'Šablono pavadinimas:';
+      const lblPresetCat = document.querySelector('#modalPresetCategory')?.parentElement?.querySelector('label');
+      if (lblPresetCat) lblPresetCat.textContent = isEn ? 'Category:' : 'Kategorija:';
       const selModalCat = document.getElementById('modalPresetCategory');
       if (selModalCat && selModalCat.options.length >= 6) {
         selModalCat.options[0].textContent = isEn ? 'My Custom Preset' : 'Mano asmeninis šablonas';
@@ -1523,9 +1645,12 @@
       const sheetModalH = document.querySelector('#saveSheetModalElement h3');
       if (sheetModalH) sheetModalH.innerHTML = `<i class="fa-solid fa-scroll text-amber-400"></i> ${isEn ? 'Save Sheet Size' : 'Išsaugoti lanko dydį'}`;
       setPlaceholder('#modalSheetName', isEn ? 'e.g., SRA3 Max 330x488' : 'pvz., SRA3 Max 330x488');
-      setText('#modalSheetName')?.parentElement?.querySelector('label', isEn ? 'Size Name:' : 'Dydžio pavadinimas:');
-      setText('#modalSheetW')?.parentElement?.querySelector('label', isEn ? 'Width (mm):' : 'Plotis (mm):');
-      setText('#modalSheetH')?.parentElement?.querySelector('label', isEn ? 'Height (mm):' : 'Aukštis (mm):');
+      const lblSheetName = document.querySelector('#modalSheetName')?.parentElement?.querySelector('label');
+      if (lblSheetName) lblSheetName.textContent = isEn ? 'Size Name:' : 'Dydžio pavadinimas:';
+      const lblSheetW = document.querySelector('#modalSheetW')?.parentElement?.querySelector('label');
+      if (lblSheetW) lblSheetW.textContent = isEn ? 'Width (mm):' : 'Plotis (mm):';
+      const lblSheetH = document.querySelector('#modalSheetH')?.parentElement?.querySelector('label');
+      if (lblSheetH) lblSheetH.textContent = isEn ? 'Height (mm):' : 'Aukštis (mm):';
       setText('#btnCancelSheetModal2', isEn ? 'Cancel' : 'Atšaukti');
       setText('#btnConfirmSaveSheet', isEn ? 'Add Size' : 'Pridėti dydį');
 
@@ -1552,7 +1677,7 @@
         'impositionCanvas', 'viewportContainer', 'pdfFileInput', 'presetFileInput',
         'btnOpenPdf', 'btnSavePdf', 'btnSampleDoc', 'btnPrevSheet', 'btnNextSheet',
         'currentSheetLabel', 'btnSideFront', 'btnSideBack', 'btnAutoPlay',
-        'btnLangLt', 'btnLangEn',
+        'btnLangLt', 'btnLangEn', 'btnLangLtMobile', 'btnLangEnMobile',
         'btnZoomIn', 'btnZoomOut', 'btnZoomFit', 'zoomLevelDisplay',
         'btnZoomInFloat', 'btnZoomOutFloat', 'zoomSlider', 'btnZoomFitFloat', 'btnZoom100Float', 'btnZoomResetPan',
         'btnLayoutToggle', 'layoutToggleLabel', 'mobileSubToolbar',
@@ -1564,17 +1689,19 @@
         'inputBleed', 'bleedDisplayBadge', 'btnMatchGuttersToBleed', 'checkBleedBox', 'checkBleedArtwork',
         'checkClipBleed', 'checkZeroSpineBleed', 'checkAsymmetricBleed', 'asymmetricBleedContainer',
         'inputBleedTop', 'inputBleedBottom', 'inputBleedLeft', 'inputBleedRight', 'statusBleedBadge',
-        'checkCropMarks', 'checkRegTargets', 'checkCmykBars', 'checkSlugLine', 'checkFoldMarks', 'checkCenterMarks',
+        'checkCropMarks', 'checkMinimalCrops', 'labelMinimalCrops', 'checkRegTargets', 'checkCmykBars', 'checkSlugLine', 'checkFoldMarks', 'checkCenterMarks',
         'checkCollatingMark', 'checkGripperMark', 'checkPageLabels',
         'selectCropStyle', 'selectCropOffsetOrigin', 'selectCropWeight', 'selectMarkInking', 'inputCropLength', 'inputCropOffset',
         'cropsSummaryInfo', 'sidebarFileStatus', 'mobileDocInfo', 'presetsListContainer', 'selectPreset', 'presetDescription',
-        'btnToggleCutView', 'labelCutView', 'checkCutContourEnabled', 'inputCutOffset', 'cutOffsetLabel',
+        'btnToggleCutView', 'labelCutView', 'checkCutContourEnabled', 'btnDemoSticker', 'selectContourMode', 'inputCutOffset', 'cutOffsetLabel',
         'checkPlotterMarks', 'checkExportBothSheets',
         'btnExportPresets', 'btnImportPresets', 'btnSavePresetModal', 'btnSaveCustomSize',
         'mainWorkspace', 'previewArea', 'settingsArea', 'tabBtnPreview', 'tabBtnSplit', 'tabBtnSettings',
         'dragDropOverlay', 'canvasDimInfo', 'statusModeLabel', 'statusGridLabel', 'statusSideLabel',
         'savePresetModalElement', 'modalPresetName', 'modalPresetCategory', 'btnCancelPresetModal', 'btnCancelPresetModal2', 'btnConfirmSavePreset',
-        'saveSheetModalElement', 'modalSheetName', 'modalSheetW', 'modalSheetH', 'btnCancelSheetModal', 'btnCancelSheetModal2', 'btnConfirmSaveSheet'
+        'saveSheetModalElement', 'modalSheetName', 'modalSheetW', 'modalSheetH', 'btnCancelSheetModal', 'btnCancelSheetModal2', 'btnConfirmSaveSheet',
+        'inputAiPrompt', 'btnRunAiPrompt', 'btnAiKeyModal', 'modalApiKey', 'inputGeminiApiKey', 'btnCloseAiKeyModal', 'btnCancelAiKeyModal', 'btnSaveAiKey',
+        'btnRotateView'
       ];
       ids.forEach(id => { UI[id] = document.getElementById(id); });
     }
@@ -1695,8 +1822,8 @@
       if (UI.canvasDimInfo) UI.canvasDimInfo.textContent = `${State.sheetPreset} • ${State.sheetWidth}×${State.sheetHeight} mm`;
       if (UI.statusModeLabel) {
         const modeMap = isLt
-          ? { 'booklet': 'KNYGELĖ (BALNAS)', 'nup': 'N-UP / DAUGINIMAS', 'cutstack': 'PJAUK IR KRAUK', 'signatures': 'KNYGOS LANKAI' }
-          : { 'booklet': 'BOOKLET (SADDLE STITCH)', 'nup': 'N-UP / STEP & REPEAT', 'cutstack': 'CUT & STACK', 'signatures': 'BOOK SIGNATURES' };
+          ? { 'booklet': 'KNYGELĖ (BALNAS)', 'nup': 'N-UP / DAUGINIMAS', 'cutstack': 'PJAUK IR KRAUK', 'signatures': 'KNYGOS LANKAI', 'manual': 'RANKINIS (SPAUSK ANT LANGELIO)' }
+          : { 'booklet': 'BOOKLET (SADDLE STITCH)', 'nup': 'N-UP / STEP & REPEAT', 'cutstack': 'CUT & STACK', 'signatures': 'BOOK SIGNATURES', 'manual': 'MANUAL (CLICK CELL)' };
         UI.statusModeLabel.innerHTML = `<i class="fa-solid fa-layer-group mr-1"></i>${modeMap[State.mode] || State.mode.toUpperCase()}`;
       }
       if (UI.statusGridLabel) {
@@ -1857,8 +1984,28 @@
       }
     }
 
+    function getCellSlotInfo(col, row, side, sheetIndex) {
+      const key = `${col}_${row}_${side}_${sheetIndex}`;
+      if (State.manualSlots && State.manualSlots[key] !== undefined) {
+        const slotData = State.manualSlots[key];
+        if (typeof slotData === 'object' && slotData !== null) {
+          return { page: slotData.page, rot: slotData.rot || 0 };
+        }
+        return { page: slotData, rot: 0 };
+      }
+      return { page: getCellPageNumber(col, row, side, sheetIndex), rot: 0 };
+    }
+
     // FIX 1 & FIX 2: Dvipusio lanko veidrodinis apvertimas ir N-Up lyginis/nelyginis poravimas
     function getCellPageNumber(col, row, side, sheetIndex) {
+      if (State.mode === 'manual' && State.manualSlots) {
+        const key = `${col}_${row}_${side}_${sheetIndex}`;
+        if (State.manualSlots[key] !== undefined) {
+          const slot = State.manualSlots[key];
+          return (typeof slot === 'object' && slot !== null) ? slot.page : slot;
+        }
+      }
+
       const cellsPerSheet = State.cols * State.rows;
       const sIndex = sheetIndex;
 
@@ -1972,6 +2119,12 @@
       ctx.scale(dpr, dpr);
       ctx.clearRect(0, 0, cWidth, cHeight);
 
+      if (State.viewRotation) {
+        ctx.translate(cWidth / 2, cHeight / 2);
+        ctx.rotate((State.viewRotation * Math.PI) / 180);
+        ctx.translate(-cWidth / 2, -cHeight / 2);
+      }
+
       const marginPx = 14;
       const availW = Math.max(50, cWidth - marginPx * 2);
       const availH = Math.max(50, cHeight - marginPx * 2);
@@ -2043,7 +2196,9 @@
           const posX = startXPx + c * (cellW + gutterXPx) + creepShiftPx;
           const posY = startYPx + r * (cellH + gutterYPx);
 
-          const pageNum = getCellPageNumber(c, r, State.currentSide, State.currentSheetIndex);
+          const slotInfo = getCellSlotInfo(c, r, State.currentSide, State.currentSheetIndex);
+          const pageNum = slotInfo.page;
+          const slotRot = slotInfo.rot || 0;
           const cellBleed = getCellBleed(c, r);
 
           if (State.viewCutSheet) {
@@ -2069,17 +2224,30 @@
               const effColForIdx = (State.printStyle !== 'single' && State.currentSide === 'back' && State.mode !== 'booklet' && State.mode !== 'signatures')
                 ? (State.cols - 1 - c) : c;
               const cellIdx = r * State.cols + effColForIdx;
+
+              ctx.save();
+              if (slotRot !== 0) {
+                const centerX = posX + cellW / 2;
+                const centerY = posY + cellH / 2;
+                ctx.translate(centerX, centerY);
+                ctx.rotate((slotRot * Math.PI) / 180);
+                ctx.translate(-centerX, -centerY);
+              }
+
               drawImposedPage(ctx, posX, posY, cellW, cellH, pageNum, cellBleed, mmToPx, cellIdx);
 
               if (State.cutContourEnabled) {
                 renderContourCutLine(ctx, posX, posY, cellW, cellH, mmToPx, State.cutOffsetMm, State.pageRenderCache[pageNum]);
               }
+              ctx.restore();
             } else {
-              ctx.fillStyle = '#f4f4f5';
+              ctx.fillStyle = '#18181b';
               ctx.fillRect(posX, posY, cellW, cellH);
-              ctx.strokeStyle = '#e4e4e7';
+              ctx.strokeStyle = '#3f3f46';
               ctx.lineWidth = 1;
+              ctx.setLineDash([4, 4]);
               ctx.strokeRect(posX, posY, cellW, cellH);
+              ctx.setLineDash([]);
               ctx.fillStyle = '#a1a1aa';
               ctx.font = 'bold 10px Inter, sans-serif';
               ctx.textAlign = 'center';
@@ -2370,7 +2538,8 @@
 
     function renderContourCutLine(ctx, posX, posY, cellW, cellH, mmToPx, offsetMm, cachedImg) {
       const offsetPx = offsetMm * mmToPx;
-      const normContour = cachedImg ? traceAlphaContour(cachedImg) : null;
+      const isShape = State.contourMode !== 'box';
+      const normContour = (isShape && cachedImg) ? traceAlphaContour(cachedImg) : null;
       const offsetPolygon = normContour ? calculateOffsetContour(normContour, cellW, cellH, offsetPx) : null;
 
       ctx.save();
@@ -2530,8 +2699,10 @@
       const isTop = rowIndex === 0;
       const isBottom = rowIndex === State.rows - 1;
 
-      // Suppress all marks for internal cells (zero marks inside grid or gutters)
-      if (!isLeft && !isRight && !isTop && !isBottom) return;
+      const isMinimal = (State.cropMarksMode === 'minimal' || State.cropStyle === 'perimeter');
+
+      // Suppress all marks for internal cells ONLY in minimal/perimeter mode
+      if (isMinimal && !isLeft && !isRight && !isTop && !isBottom) return;
 
       let markLen = (typeof State.cropLength === 'number' ? State.cropLength : 5) * mmToPx;
       const markOffset = (typeof State.cropOffset === 'number' ? State.cropOffset : 2) * mmToPx;
@@ -2554,49 +2725,70 @@
 
       ctx.beginPath();
 
-      // Top perimeter ticks: nukreipti griežtai AUKŠTYN į viršutinę paraštę
-      if (isTop) {
-        if (isLeft || State.gutterX > 0) {
-          ctx.moveTo(x, y - offT);
-          ctx.lineTo(x, y - offT - markLen);
+      if (isMinimal) {
+        // Top perimeter ticks: nukreipti griežtai AUKŠTYN į viršutinę paraštę
+        if (isTop) {
+          if (isLeft || State.gutterX > 0) {
+            ctx.moveTo(x, y - offT);
+            ctx.lineTo(x, y - offT - markLen);
+          }
+          ctx.moveTo(x + w, y - offT);
+          ctx.lineTo(x + w, y - offT - markLen);
         }
-        ctx.moveTo(x + w, y - offT);
-        ctx.lineTo(x + w, y - offT - markLen);
-      }
 
-      // Bottom perimeter ticks: nukreipti griežtai ŽEMYN į apatinę paraštę
-      if (isBottom) {
-        if (isLeft || State.gutterX > 0) {
-          ctx.moveTo(x, y + h + offB);
-          ctx.lineTo(x, y + h + offB + markLen);
+        // Bottom perimeter ticks: nukreipti griežtai ŽEMYN į apatinę paraštę
+        if (isBottom) {
+          if (isLeft || State.gutterX > 0) {
+            ctx.moveTo(x, y + h + offB);
+            ctx.lineTo(x, y + h + offB + markLen);
+          }
+          ctx.moveTo(x + w, y + h + offB);
+          ctx.lineTo(x + w, y + h + offB + markLen);
         }
-        ctx.moveTo(x + w, y + h + offB);
-        ctx.lineTo(x + w, y + h + offB + markLen);
-      }
 
-      // Left perimeter ticks: nukreipti griežtai KAIRĖN į kairiąją paraštę
-      if (isLeft) {
-        if (isTop || State.gutterY > 0) {
-          ctx.moveTo(x - offL, y);
-          ctx.lineTo(x - offL - markLen, y);
+        // Left perimeter ticks: nukreipti griežtai KAIRĖN į kairiąją paraštę
+        if (isLeft) {
+          if (isTop || State.gutterY > 0) {
+            ctx.moveTo(x - offL, y);
+            ctx.lineTo(x - offL - markLen, y);
+          }
+          ctx.moveTo(x - offL, y + h);
+          ctx.lineTo(x - offL - markLen, y + h);
         }
-        ctx.moveTo(x - offL, y + h);
-        ctx.lineTo(x - offL - markLen, y + h);
-      }
 
-      // Right perimeter ticks: nukreipti griežtai DEŠINĖN į dešiniąją paraštę
-      if (isRight) {
-        if (isTop || State.gutterY > 0) {
-          ctx.moveTo(x + w + offR, y);
-          ctx.lineTo(x + w + offR + markLen, y);
+        // Right perimeter ticks: nukreipti griežtai DEŠINĖN į dešiniąją paraštę
+        if (isRight) {
+          if (isTop || State.gutterY > 0) {
+            ctx.moveTo(x + w + offR, y);
+            ctx.lineTo(x + w + offR + markLen, y);
+          }
+          ctx.moveTo(x + w + offR, y + h);
+          ctx.lineTo(x + w + offR + markLen, y + h);
         }
-        ctx.moveTo(x + w + offR, y + h);
-        ctx.lineTo(x + w + offR + markLen, y + h);
+      } else {
+        // Full mode: draw corner marks for every individual cell/gutter
+        const isBooklet = (State.mode === 'booklet' || State.mode === 'signatures') && State.cols >= 2;
+        const isSpineRight = isBooklet && (colIndex % 2 === 0);
+        const isSpineLeft = isBooklet && (colIndex % 2 === 1);
+
+        if (!isSpineLeft) {
+          ctx.moveTo(x - offL, y); ctx.lineTo(x - offL - markLen, y);
+          ctx.moveTo(x - offL, y + h); ctx.lineTo(x - offL - markLen, y + h);
+        }
+        ctx.moveTo(x, y - offT); ctx.lineTo(x, y - offT - markLen);
+        ctx.moveTo(x, y + h + offB); ctx.lineTo(x, y + h + offB + markLen);
+
+        if (!isSpineRight) {
+          ctx.moveTo(x + w + offR, y); ctx.lineTo(x + w + offR + markLen, y);
+          ctx.moveTo(x + w + offR, y + h); ctx.lineTo(x + w + offR + markLen, y + h);
+        }
+        ctx.moveTo(x + w, y - offT); ctx.lineTo(x + w, y - offT - markLen);
+        ctx.moveTo(x + w, y + h + offB); ctx.lineTo(x + w, y + h + offB + markLen);
       }
 
       ctx.stroke();
 
-      if (State.pageLabels && pageNum !== null && isTop && isLeft) {
+      if (State.pageLabels && pageNum !== null && (isMinimal ? (isTop && isLeft) : true)) {
         ctx.fillStyle = '#71717a';
         ctx.font = '5px JetBrains Mono, monospace';
         ctx.textAlign = 'right';
@@ -2882,7 +3074,10 @@
 
             for (let r = 0; r < State.rows; r++) {
               for (let c = 0; c < State.cols; c++) {
-                const pageNum = getCellPageNumber(c, r, side, s);
+                const slotInfo = getCellSlotInfo(c, r, side, s);
+                const pageNum = slotInfo.page;
+                const slotRot = slotInfo.rot || 0;
+
                 if (pageNum !== null) {
                   let creepMm = 0;
                   if ((State.mode === 'booklet' || State.mode === 'signatures') && State.creepMm > 0 && State.totalSheets > 1) {
@@ -2902,10 +3097,15 @@
                   // FIX 3: Puslapis imamas iš atminties podėlio
                   const embeddedPage = await getCachedEmbeddedPage(pageNum);
                   if (embeddedPage) {
-                    if (State.pageRotated) {
+                    const totalRot = ((State.pageRotated ? 90 : 0) + slotRot) % 360;
+                    if (totalRot === 90) {
                       sheetPage.drawPage(embeddedPage, { x: posX + cellWPt, y: posY, width: cellHPt, height: cellWPt, rotate: PDFLib.degrees(90) });
+                    } else if (totalRot === 180) {
+                      sheetPage.drawPage(embeddedPage, { x: posX + cellWPt, y: posY + cellHPt, width: cellWPt, height: cellHPt, rotate: PDFLib.degrees(180) });
+                    } else if (totalRot === 270) {
+                      sheetPage.drawPage(embeddedPage, { x: posX, y: posY + cellHPt, width: cellHPt, height: cellWPt, rotate: PDFLib.degrees(270) });
                     } else {
-                      sheetPage.drawPage(embeddedPage, { x: posX, y: posY, width: cellWPt, height: cellHPt });
+                      sheetPage.drawPage(embeddedPage, { x: posX, y: posY, width: cellWPt, height: cellHPt, rotate: PDFLib.degrees(0) });
                     }
                   } else {
                     if (State.bleedArtwork && (bTopPt > 0 || bBottomPt > 0 || bLeftPt > 0 || bRightPt > 0)) {
@@ -3042,7 +3242,7 @@
         a.click();
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
-        showToast('PDF sėkmingai sugeneruotas ir atsisiųstas!');
+        showToast(State.lang === 'en' ? 'PDF successfully generated and downloaded!' : 'PDF sėkmingai sugeneruotas ir atsisiųstas!');
       } catch (err) {
         console.error('Export error:', err);
         showToast('Eksportavimo klaida: ' + err.message, 'error');
@@ -3584,6 +3784,165 @@
       }
     }
 
+    async function dispatchAiPrompt() {
+      const apiKey = localStorage.getItem('impozitor_gemini_key');
+      if (!apiKey) {
+        if (UI.modalApiKey) {
+          if (UI.inputGeminiApiKey) UI.inputGeminiApiKey.value = '';
+          UI.modalApiKey.classList.remove('hidden');
+          if (UI.inputGeminiApiKey) UI.inputGeminiApiKey.focus();
+        }
+        showToast('Įveskite Gemini API raktą, kad galėtumėte naudotis AI Copilot', 'info');
+        return;
+      }
+
+      const promptText = UI.inputAiPrompt ? UI.inputAiPrompt.value.trim() : '';
+      if (!promptText) {
+        showToast('Įveskite užklausą AI Copilot (pvz. 90x50 vizitinės ant SRA3...)', 'info');
+        return;
+      }
+
+      const btnRun = UI.btnRunAiPrompt || document.getElementById('btnRunAiPrompt');
+      const originalBtnHtml = btnRun ? btnRun.innerHTML : '';
+      if (btnRun) {
+        btnRun.disabled = true;
+        btnRun.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i><span class="hidden sm:inline"> Generuoja...</span>`;
+      }
+
+      showToast('AI Copilot analizuoja maketo užklausą...', 'info');
+
+      try {
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
+        const response = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [
+              {
+                role: 'user',
+                parts: [{ text: promptText }]
+              }
+            ],
+            systemInstruction: {
+              parts: [
+                {
+                  text: 'You are a prepress imposition assistant. Translate user intent into strict JSON with keys: pageWidth (number), pageHeight (number), sheetPreset (string: SRA3|A3|SRA3Plus|B3|B2|B1|A4|custom), sheetWidth (number), sheetHeight (number), mode (booklet|nup|cutstack|signatures), printStyle (sheetwise|workandturn|single), cols (number), rows (number), gutterX (number), gutterY (number), bleedMm (number), cropMarksMode (minimal|full), autoFit (boolean).'
+                }
+              ]
+            },
+            generationConfig: {
+              responseMimeType: 'application/json'
+            }
+          })
+        });
+
+        if (!response.ok) {
+          const errData = await response.json().catch(() => ({}));
+          throw new Error(errData?.error?.message || `HTTP ${response.status}`);
+        }
+
+        const resData = await response.json();
+        const rawJsonText = resData?.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (!rawJsonText) {
+          throw new Error('Gautas tuščias atsakymas iš Gemini API');
+        }
+
+        const data = JSON.parse(rawJsonText);
+
+        // Map parameters directly to State & DOM inputs
+        if (data.pageWidth && typeof data.pageWidth === 'number') {
+          State.sourcePageWidth = data.pageWidth;
+          if (UI.inputPageWidth) UI.inputPageWidth.value = State.sourcePageWidth;
+        }
+        if (data.pageHeight && typeof data.pageHeight === 'number') {
+          State.sourcePageHeight = data.pageHeight;
+          if (UI.inputPageHeight) UI.inputPageHeight.value = State.sourcePageHeight;
+        }
+
+        const sheetPresetsMap = {
+          'SRA3': [320, 450],
+          'A3': [297, 420],
+          'SRA3Plus': [330, 488],
+          'B3': [353, 500],
+          'B2': [500, 700],
+          'B1': [700, 1000],
+          'A4': [210, 297]
+        };
+
+        if (data.sheetPreset && typeof data.sheetPreset === 'string') {
+          State.sheetPreset = data.sheetPreset;
+          if (UI.selectSheetPreset) UI.selectSheetPreset.value = State.sheetPreset;
+          if (sheetPresetsMap[data.sheetPreset]) {
+            State.sheetWidth = sheetPresetsMap[data.sheetPreset][0];
+            State.sheetHeight = sheetPresetsMap[data.sheetPreset][1];
+            if (UI.inputSheetWidth) UI.inputSheetWidth.value = State.sheetWidth;
+            if (UI.inputSheetHeight) UI.inputSheetHeight.value = State.sheetHeight;
+          }
+        }
+
+        if (data.sheetWidth && typeof data.sheetWidth === 'number' && data.sheetWidth > 0) {
+          State.sheetWidth = data.sheetWidth;
+          if (UI.inputSheetWidth) UI.inputSheetWidth.value = State.sheetWidth;
+        }
+        if (data.sheetHeight && typeof data.sheetHeight === 'number' && data.sheetHeight > 0) {
+          State.sheetHeight = data.sheetHeight;
+          if (UI.inputSheetHeight) UI.inputSheetHeight.value = State.sheetHeight;
+        }
+
+        if (data.mode && typeof data.mode === 'string') {
+          State.mode = data.mode;
+          if (UI.selectMode) UI.selectMode.value = State.mode;
+        }
+        if (data.printStyle && typeof data.printStyle === 'string') {
+          State.printStyle = data.printStyle;
+          if (UI.selectPrintStyle) UI.selectPrintStyle.value = State.printStyle;
+        }
+        if (data.cols && typeof data.cols === 'number' && data.cols > 0) {
+          State.cols = data.cols;
+          if (UI.inputCols) UI.inputCols.value = State.cols;
+        }
+        if (data.rows && typeof data.rows === 'number' && data.rows > 0) {
+          State.rows = data.rows;
+          if (UI.inputRows) UI.inputRows.value = State.rows;
+        }
+        if (typeof data.gutterX === 'number' && data.gutterX >= 0) {
+          State.gutterX = data.gutterX;
+          if (UI.inputGutterX) UI.inputGutterX.value = State.gutterX;
+        }
+        if (typeof data.gutterY === 'number' && data.gutterY >= 0) {
+          State.gutterY = data.gutterY;
+          if (UI.inputGutterY) UI.inputGutterY.value = State.gutterY;
+        }
+        if (typeof data.bleedMm === 'number' && data.bleedMm >= 0) {
+          State.bleedMm = data.bleedMm;
+          if (UI.inputBleed) UI.inputBleed.value = State.bleedMm;
+        }
+        if (data.cropMarksMode && typeof data.cropMarksMode === 'string') {
+          State.cropMarksMode = data.cropMarksMode;
+          if (UI.checkMinimalCrops) UI.checkMinimalCrops.checked = (data.cropMarksMode === 'minimal');
+        }
+
+        updateStatusBadge();
+
+        if (data.autoFit === true) {
+          runAutoFitMax();
+        } else {
+          recalculateImposition();
+          renderImpositionCanvas();
+        }
+
+        showToast(State.lang === 'en' ? 'AI prepress layout applied successfully!' : 'AI spaudos maketo nustatymai pritaikyti!', 'success');
+      } catch (err) {
+        console.error('Gemini API Error:', err);
+        showToast(`AI Klaida: ${err.message || 'Nepavyko apdoroti užklausos'}`, 'error');
+      } finally {
+        if (btnRun) {
+          btnRun.disabled = false;
+          btnRun.innerHTML = originalBtnHtml;
+        }
+      }
+    }
+
     function exportPresetsToJson() {
       try {
         const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(PresetsDB, null, 2));
@@ -3694,6 +4053,13 @@
         UI.btnZoomResetPan.addEventListener('click', () => {
           State.panX = 0; State.panY = 0;
           renderImpositionCanvas();
+        });
+      }
+      if (UI.btnRotateView) {
+        UI.btnRotateView.addEventListener('click', () => {
+          State.viewRotation = (State.viewRotation + 90) % 360;
+          renderImpositionCanvas();
+          showToast(`Vaizdas pasuktas: ${State.viewRotation}°`);
         });
       }
       if (UI.zoomSlider) {
@@ -3890,6 +4256,8 @@
       };
       if (UI.btnLangLt) UI.btnLangLt.addEventListener('click', () => handleLanguageToggle('lt'));
       if (UI.btnLangEn) UI.btnLangEn.addEventListener('click', () => handleLanguageToggle('en'));
+      if (UI.btnLangLtMobile) UI.btnLangLtMobile.addEventListener('click', () => handleLanguageToggle('lt'));
+      if (UI.btnLangEnMobile) UI.btnLangEnMobile.addEventListener('click', () => handleLanguageToggle('en'));
 
       if (UI.btnRotatePage) {
         UI.btnRotatePage.addEventListener('click', () => {
@@ -4151,6 +4519,13 @@
         }
       });
 
+      if (UI.checkMinimalCrops) {
+        UI.checkMinimalCrops.addEventListener('change', (e) => {
+          State.cropMarksMode = e.target.checked ? 'minimal' : 'full';
+          renderImpositionCanvas();
+        });
+      }
+
       if (UI.selectCropStyle) {
         UI.selectCropStyle.addEventListener('change', (e) => {
           State.cropStyle = e.target.value;
@@ -4229,6 +4604,62 @@
           State.cutContourEnabled = e.target.checked;
           renderImpositionCanvas();
           showToast(State.cutContourEnabled ? 'Kirtimo kontūras įjungtas (+2mm)' : 'Kirtimo kontūras išjungtas');
+        });
+      }
+      if (UI.selectContourMode) {
+        UI.selectContourMode.addEventListener('change', (e) => {
+          State.contourMode = e.target.value;
+          renderImpositionCanvas();
+        });
+      }
+      if (UI.btnDemoSticker) {
+        UI.btnDemoSticker.addEventListener('click', () => {
+          const stCanvas = document.createElement('canvas');
+          stCanvas.width = 400;
+          stCanvas.height = 400;
+          const sCtx = stCanvas.getContext('2d');
+          sCtx.clearRect(0, 0, 400, 400);
+          sCtx.beginPath();
+          sCtx.arc(200, 200, 150, 0, Math.PI * 2);
+          sCtx.fillStyle = '#f59e0b';
+          sCtx.fill();
+          sCtx.lineWidth = 10;
+          sCtx.strokeStyle = '#18181b';
+          sCtx.stroke();
+          sCtx.fillStyle = '#18181b';
+          sCtx.font = 'bold 42px Inter, sans-serif';
+          sCtx.textAlign = 'center';
+          sCtx.textBaseline = 'middle';
+          sCtx.fillText('STICKER', 200, 200);
+
+          State.sourcePageWidth = 50;
+          State.sourcePageHeight = 50;
+          State.docPageCount = 1;
+          State.mode = 'nup';
+          State.duplicatePages = true;
+          State.cols = 5;
+          State.rows = 7;
+          State.gutterX = 5;
+          State.gutterY = 5;
+          State.cutContourEnabled = true;
+          State.contourMode = 'shape';
+          State.pageRenderCache = { 1: stCanvas };
+
+          if (UI.inputPageWidth) UI.inputPageWidth.value = 50;
+          if (UI.inputPageHeight) UI.inputPageHeight.value = 50;
+          if (UI.selectMode) UI.selectMode.value = 'nup';
+          if (UI.checkDuplicatePages) UI.checkDuplicatePages.checked = true;
+          if (UI.inputCols) UI.inputCols.value = 5;
+          if (UI.inputRows) UI.inputRows.value = 7;
+          if (UI.inputGutterX) UI.inputGutterX.value = 5;
+          if (UI.inputGutterY) UI.inputGutterY.value = 5;
+          if (UI.checkCutContourEnabled) UI.checkCutContourEnabled.checked = true;
+          if (UI.selectContourMode) UI.selectContourMode.value = 'shape';
+
+          updateStatusBadge();
+          recalculateImposition();
+          renderImpositionCanvas();
+          showToast('Užkrautas demonstracinis lipdukas su CutContour kontūru!');
         });
       }
       if (UI.inputCutOffset) {
@@ -4364,6 +4795,184 @@
           recalculateImposition();
           renderImpositionCanvas();
           showToast(`Dydis „${name}“ (${w}×${h} mm) pridėtas!`);
+        });
+      }
+
+      // -------------------------------------------------------------
+      // AI PREPRESS COPILOT EVENT BINDINGS
+      // -------------------------------------------------------------
+      if (UI.btnRunAiPrompt) {
+        UI.btnRunAiPrompt.addEventListener('click', dispatchAiPrompt);
+      }
+      if (UI.inputAiPrompt) {
+        UI.inputAiPrompt.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            dispatchAiPrompt();
+          }
+        });
+      }
+      const openAiKeyModal = () => {
+        if (UI.inputGeminiApiKey) {
+          UI.inputGeminiApiKey.value = localStorage.getItem('impozitor_gemini_key') || '';
+        }
+        if (UI.modalApiKey) UI.modalApiKey.classList.remove('hidden');
+      };
+      if (UI.btnAiKeyModal) UI.btnAiKeyModal.addEventListener('click', openAiKeyModal);
+      const btnAiKeySettings = document.getElementById('btnAiKeySettings');
+      if (btnAiKeySettings) btnAiKeySettings.addEventListener('click', openAiKeyModal);
+      const closeAiKeyModal = () => { if (UI.modalApiKey) UI.modalApiKey.classList.add('hidden'); };
+      if (UI.btnCloseAiKeyModal) UI.btnCloseAiKeyModal.addEventListener('click', closeAiKeyModal);
+      if (UI.btnCancelAiKeyModal) UI.btnCancelAiKeyModal.addEventListener('click', closeAiKeyModal);
+      if (UI.btnSaveAiKey) {
+        UI.btnSaveAiKey.addEventListener('click', () => {
+          const val = UI.inputGeminiApiKey ? UI.inputGeminiApiKey.value.trim() : '';
+          if (val) {
+            localStorage.setItem('impozitor_gemini_key', val);
+            showToast('Gemini API raktas išsaugotas naršyklės atmintyje', 'success');
+          } else {
+            localStorage.removeItem('impozitor_gemini_key');
+            showToast('API raktas pašalintas', 'info');
+          }
+          closeAiKeyModal();
+        });
+      }
+      document.querySelectorAll('.btn-slot-rot').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          document.querySelectorAll('.btn-slot-rot').forEach(b => {
+            b.className = 'btn-slot-rot px-2 py-1.5 rounded-lg border border-zinc-700 text-xs font-mono font-bold transition cursor-pointer text-center bg-zinc-800 text-zinc-300 hover:text-white';
+          });
+          e.currentTarget.className = 'btn-slot-rot px-2 py-1.5 rounded-lg border border-amber-400 text-xs font-mono font-bold transition cursor-pointer text-center bg-amber-500 text-zinc-950';
+        });
+      });
+
+      const btnSetSlotEmpty = document.getElementById('btnSetSlotEmpty');
+      if (btnSetSlotEmpty) {
+        btnSetSlotEmpty.addEventListener('click', () => {
+          const pageInput = document.getElementById('inputSlotPageNum');
+          if (pageInput) pageInput.value = '';
+        });
+      }
+
+      const closeSlotModal = () => {
+        const modal = document.getElementById('slotEditModal');
+        if (modal) modal.classList.add('hidden');
+      };
+
+      const btnCloseSlotModal = document.getElementById('btnCloseSlotModal');
+      if (btnCloseSlotModal) btnCloseSlotModal.addEventListener('click', closeSlotModal);
+
+      const btnCancelSlotModal = document.getElementById('btnCancelSlotModal');
+      if (btnCancelSlotModal) btnCancelSlotModal.addEventListener('click', closeSlotModal);
+
+      const btnSaveSlotConfig = document.getElementById('btnSaveSlotConfig');
+      if (btnSaveSlotConfig) {
+        btnSaveSlotConfig.addEventListener('click', () => {
+          if (!State.activeEditingSlot) {
+            closeSlotModal();
+            return;
+          }
+
+          const pageInput = document.getElementById('inputSlotPageNum');
+          const rawVal = pageInput ? pageInput.value.trim() : '';
+          const parsedPage = parseInt(rawVal, 10);
+          const page = (!isNaN(parsedPage) && parsedPage > 0) ? parsedPage : null;
+
+          const activeRotBtn = document.querySelector('.btn-slot-rot.bg-amber-500');
+          const rot = activeRotBtn ? (parseInt(activeRotBtn.getAttribute('data-rot'), 10) || 0) : 0;
+
+          State.manualSlots[State.activeEditingSlot.key] = { page, rot };
+          closeSlotModal();
+          renderImpositionCanvas();
+          if (page !== null) {
+            showToast(`Langelis [${State.activeEditingSlot.col + 1}×${State.activeEditingSlot.row + 1}]: P.${page} (${rot}°)`);
+          } else {
+            showToast(`Langelis [${State.activeEditingSlot.col + 1}×${State.activeEditingSlot.row + 1}] nustatytas kaip tuščias`);
+          }
+        });
+      }
+
+      if (UI.impositionCanvas) {
+        UI.impositionCanvas.addEventListener('click', (e) => {
+          if (State.mode !== 'manual') return;
+
+          const canvas = UI.impositionCanvas;
+          const container = UI.viewportContainer;
+          if (!canvas || !container) return;
+
+          const rect = canvas.getBoundingClientRect();
+          const clickX = e.clientX - rect.left;
+          const clickY = e.clientY - rect.top;
+
+          const cWidth = container.clientWidth;
+          const cHeight = container.clientHeight;
+          const sheetAspect = State.sheetWidth / State.sheetHeight;
+          const marginPx = 14;
+          const availW = Math.max(50, cWidth - marginPx * 2);
+          const availH = Math.max(50, cHeight - marginPx * 2);
+
+          let drawW, drawH;
+          if (availW / availH > sheetAspect) {
+            drawH = availH * State.zoom;
+            drawW = drawH * sheetAspect;
+          } else {
+            drawW = availW * State.zoom;
+            drawH = drawW / sheetAspect;
+          }
+
+          const drawX = (cWidth - drawW) / 2 + State.panX;
+          const drawY = (cHeight - drawH) / 2 + State.panY;
+          const mmToPx = drawW / State.sheetWidth;
+
+          const isRot = Boolean(State.pageRotation === 90 || State.pageRotated);
+          const pageW_mm = isRot ? State.sourcePageHeight : State.sourcePageWidth;
+          const pageH_mm = isRot ? State.sourcePageWidth : State.sourcePageHeight;
+          const cellW = pageW_mm * mmToPx;
+          const cellH = pageH_mm * mmToPx;
+          const gutterXPx = State.gutterX * mmToPx;
+          const gutterYPx = State.gutterY * mmToPx;
+
+          const totalGridW_mm = State.cols * pageW_mm + (State.cols - 1) * State.gutterX;
+          const totalGridH_mm = State.rows * pageH_mm + (State.rows - 1) * State.gutterY;
+
+          let startOffsetX_mm = State.autoCenter ? (State.sheetWidth - totalGridW_mm) / 2 : State.marginSide;
+          let startOffsetY_mm = State.autoCenter ? (State.sheetHeight - totalGridH_mm) / 2 : State.marginTop;
+
+          const startXPx = drawX + startOffsetX_mm * mmToPx;
+          const startYPx = drawY + startOffsetY_mm * mmToPx;
+
+          for (let r = 0; r < State.rows; r++) {
+            for (let c = 0; c < State.cols; c++) {
+              const posX = startXPx + c * (cellW + gutterXPx);
+              const posY = startYPx + r * (cellH + gutterYPx);
+
+              if (clickX >= posX && clickX <= posX + cellW && clickY >= posY && clickY <= posY + cellH) {
+                const key = `${c}_${r}_${State.currentSide}_${State.currentSheetIndex}`;
+                State.activeEditingSlot = { col: c, row: r, side: State.currentSide, sheetIndex: State.currentSheetIndex, key };
+                const slotInfo = getCellSlotInfo(c, r, State.currentSide, State.currentSheetIndex);
+
+                const slotTitle = document.getElementById('slotModalTitle');
+                if (slotTitle) slotTitle.innerHTML = `<i class="fa-solid fa-square-pen text-amber-400"></i> Langelis [${c + 1}×${r + 1}]`;
+
+                const pageInput = document.getElementById('inputSlotPageNum');
+                if (pageInput) pageInput.value = (slotInfo.page !== null && slotInfo.page !== undefined) ? slotInfo.page : '';
+
+                let activeRot = slotInfo.rot || 0;
+                document.querySelectorAll('.btn-slot-rot').forEach(btn => {
+                  const btnRot = parseInt(btn.getAttribute('data-rot'), 10);
+                  if (btnRot === activeRot) {
+                    btn.className = 'btn-slot-rot px-2 py-1.5 rounded-lg border border-amber-400 text-xs font-mono font-bold transition cursor-pointer text-center bg-amber-500 text-zinc-950';
+                  } else {
+                    btn.className = 'btn-slot-rot px-2 py-1.5 rounded-lg border border-zinc-700 text-xs font-mono font-bold transition cursor-pointer text-center bg-zinc-800 text-zinc-300 hover:text-white';
+                  }
+                });
+
+                const modal = document.getElementById('slotEditModal');
+                if (modal) modal.classList.remove('hidden');
+                return;
+              }
+            }
+          }
         });
       }
 
