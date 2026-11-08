@@ -3,7 +3,9 @@
 // Global State, Presets Database & Localization Engine
 // =============================================================
 
-const State = {
+const UI = window.UI = {};
+
+const State = window.State = {
   lang: (function() {
     try {
       return localStorage.getItem('impozitor_lang') || 'lt';
@@ -516,38 +518,33 @@ function applyUiTranslations(lang) {
 }
 
 // -------------------------------------------------------------
-// IMPOSITION MATH & CELL LOOKUP HELPERS
+// IMPOSITION MATH, UNIFIED SLOT GEOMETRY & CELL LOOKUP ENGINE
 // -------------------------------------------------------------
-function getCellSlotInfo(col, row, side, sheetIndex) {
-  const key = `${col}_${row}_${side}_${sheetIndex}`;
-  if (State.manualSlots && State.manualSlots[key] !== undefined) {
-    const slotData = State.manualSlots[key];
-    if (typeof slotData === 'object' && slotData !== null) {
-      return { page: slotData.page, rot: slotData.rot || 0 };
-    }
-    return { page: slotData, rot: 0 };
-  }
-  return { page: getCellPageNumber(col, row, side, sheetIndex), rot: 0 };
+function normalizeRotationAngle(angle) {
+  const num = Number(angle) || 0;
+  const snapped = Math.round(num / 90) * 90;
+  return ((snapped % 360) + 360) % 360;
 }
 
-function getCellPageNumber(col, row, side, sheetIndex) {
-  if (State.mode === 'manual' && State.manualSlots) {
-    const key = `${col}_${row}_${side}_${sheetIndex}`;
-    if (State.manualSlots[key] !== undefined) {
-      const slot = State.manualSlots[key];
-      return (typeof slot === 'object' && slot !== null) ? slot.page : slot;
-    }
+function getGlobalPageRotation() {
+  if (typeof State.pageRotation === 'number' && !isNaN(State.pageRotation)) {
+    return normalizeRotationAngle(State.pageRotation);
   }
+  return State.pageRotated ? 90 : 0;
+}
 
-  const cellsPerSheet = State.cols * State.rows;
-  const sIndex = sheetIndex;
+function computeAutoPageNumber(mode, col, row, side, sheetIndex) {
+  const cellsPerSheet = Math.max(1, State.cols * State.rows);
+  const sIndex = Math.max(0, Number(sheetIndex) || 0);
+  const activeMode = mode || State.lastAutoMode || 'booklet';
+  const totalDocPages = Math.max(1, Number(State.docPageCount) || 1);
 
-  if (State.mode === 'booklet' || State.mode === 'signatures') {
+  if (activeMode === 'booklet') {
     const effColBooklet = (State.printStyle === 'workandturn' && side === 'back')
       ? (State.cols - 1 - col)
       : col;
     const pagesPerSheet = Math.max(4, cellsPerSheet * 2);
-    const paddedCount = Math.max(pagesPerSheet, Math.ceil(State.docPageCount / pagesPerSheet) * pagesPerSheet);
+    const paddedCount = Math.max(pagesPerSheet, Math.ceil(totalDocPages / pagesPerSheet) * pagesPerSheet);
     const pairIndex = row * Math.max(1, Math.floor(State.cols / 2)) + Math.floor(effColBooklet / 2);
     const isRightPageOfSpread = (effColBooklet % 2) === 1;
     const spreadOffset = (sIndex * Math.max(1, Math.floor(cellsPerSheet / 2)) + pairIndex) * 2;
@@ -556,12 +553,35 @@ function getCellPageNumber(col, row, side, sheetIndex) {
       const left = paddedCount - spreadOffset;
       const right = 1 + spreadOffset;
       const p = isRightPageOfSpread ? right : left;
-      return (p >= 1 && p <= State.docPageCount) ? p : null;
+      return (p >= 1 && p <= totalDocPages) ? p : null;
     } else {
       const left = 2 + spreadOffset;
       const right = paddedCount - 1 - spreadOffset;
       const p = isRightPageOfSpread ? right : left;
-      return (p >= 1 && p <= State.docPageCount) ? p : null;
+      return (p >= 1 && p <= totalDocPages) ? p : null;
+    }
+  }
+
+  if (activeMode === 'signatures') {
+    const effColSig = (State.printStyle === 'workandturn' && side === 'back')
+      ? (State.cols - 1 - col)
+      : col;
+    const pagesPerSheet = Math.max(4, cellsPerSheet * 2);
+    const sigBase = sIndex * pagesPerSheet;
+    const pairIndex = row * Math.max(1, Math.floor(State.cols / 2)) + Math.floor(effColSig / 2);
+    const isRightPageOfSpread = (effColSig % 2) === 1;
+    const localOffset = pairIndex * 2;
+
+    if (side === 'front') {
+      const left = sigBase + pagesPerSheet - localOffset;
+      const right = sigBase + 1 + localOffset;
+      const p = isRightPageOfSpread ? right : left;
+      return (p >= 1 && p <= totalDocPages) ? p : null;
+    } else {
+      const left = sigBase + 2 + localOffset;
+      const right = sigBase + pagesPerSheet - 1 - localOffset;
+      const p = isRightPageOfSpread ? right : left;
+      return (p >= 1 && p <= totalDocPages) ? p : null;
     }
   }
 
@@ -570,46 +590,413 @@ function getCellPageNumber(col, row, side, sheetIndex) {
     ? (State.cols - 1 - col)
     : col;
 
-  if (State.mode === 'cutstack') {
+  if (activeMode === 'cutstack') {
     const cellIndex = row * State.cols + effCol;
-    let pNum = (State.printStyle === 'single')
-      ? 1 + sIndex + (cellIndex * State.totalSheets)
-      : 1 + (sIndex * 2) + (side === 'front' ? 0 : 1) + (cellIndex * State.totalSheets * 2);
-    return pNum <= State.docPageCount ? pNum : null;
+    const totalS = Math.max(1, State.totalSheets || 1);
+    const pNum = (State.printStyle === 'single')
+      ? 1 + sIndex + (cellIndex * totalS)
+      : 1 + (sIndex * 2) + (side === 'front' ? 0 : 1) + (cellIndex * totalS * 2);
+    return (pNum >= 1 && pNum <= totalDocPages) ? pNum : null;
   }
 
   if (State.duplicatePages) {
     let pNum = (State.printStyle === 'single' || State.printStyle === 'workandturn')
       ? sIndex + 1
       : (sIndex * 2) + (side === 'front' ? 1 : 2);
-    if (pNum > State.docPageCount && State.docPageCount === 1) pNum = 1;
-    return pNum <= State.docPageCount ? pNum : null;
+    if (pNum > totalDocPages && totalDocPages === 1) pNum = 1;
+    return (pNum >= 1 && pNum <= totalDocPages) ? pNum : null;
   } else {
     // Standard sequential N-Up duplex pairing (odd front, even back)
     const cellIndex = row * State.cols + effCol;
-    let pNum = (State.printStyle === 'single')
+    const pNum = (State.printStyle === 'single')
       ? 1 + (sIndex * cellsPerSheet) + cellIndex
       : (sIndex * cellsPerSheet + cellIndex) * 2 + (side === 'front' ? 1 : 2);
-    return pNum <= State.docPageCount ? pNum : null;
+    return (pNum >= 1 && pNum <= totalDocPages) ? pNum : null;
   }
 }
 
-function getCellCreepOffsetMm(col) {
-  if ((State.mode !== 'booklet' && State.mode !== 'signatures') || State.creepMm <= 0 || State.totalSheets <= 1) {
+function seedManualSlotsFromAuto(sourceMode = null, overwriteExisting = false) {
+  if (!State.manualSlots) State.manualSlots = {};
+  const baseMode = sourceMode || State.lastAutoMode || (State.mode !== 'manual' ? State.mode : 'booklet');
+  const totalS = Math.max(1, State.totalSheets || 1);
+
+  for (let s = 0; s < totalS; s++) {
+    for (const side of ['front', 'back']) {
+      for (let r = 0; r < State.rows; r++) {
+        for (let c = 0; c < State.cols; c++) {
+          const key = `${c}_${r}_${side}_${s}`;
+          if (overwriteExisting || State.manualSlots[key] === undefined) {
+            const p = computeAutoPageNumber(baseMode, c, r, side, s);
+            const autoRot = (baseMode === 'signatures' && State.rows >= 2 && (r % 2 === 1)) ? 180 : 0;
+            State.manualSlots[key] = {
+              page: p,
+              rot: autoRot,
+              rotation: autoRot,
+              offsetX: 0,
+              offsetY: 0
+            };
+          }
+        }
+      }
+    }
+  }
+}
+
+function getCellSlotInfo(col, row, side = State.currentSide, sheetIndex = State.currentSheetIndex) {
+  const key = `${col}_${row}_${side}_${sheetIndex}`;
+  if (State.mode === 'manual') {
+    if (State.manualSlots && State.manualSlots[key] !== undefined) {
+      const slotData = State.manualSlots[key];
+      if (typeof slotData === 'object' && slotData !== null) {
+        const rot = normalizeRotationAngle(slotData.rotation !== undefined ? slotData.rotation : (slotData.rot || 0));
+        const parsedPage = (slotData.page !== null && slotData.page !== undefined && slotData.page !== '')
+          ? parseInt(slotData.page, 10)
+          : null;
+        return {
+          page: (!isNaN(parsedPage) && parsedPage > 0) ? parsedPage : null,
+          rot: rot,
+          rotation: rot,
+          offsetX: Number(slotData.offsetX) || 0,
+          offsetY: Number(slotData.offsetY) || 0
+        };
+      }
+      const parsedLegacy = parseInt(slotData, 10);
+      return {
+        page: (!isNaN(parsedLegacy) && parsedLegacy > 0) ? parsedLegacy : null,
+        rot: 0,
+        rotation: 0,
+        offsetX: 0,
+        offsetY: 0
+      };
+    }
+    const fallbackPage = computeAutoPageNumber(State.lastAutoMode || 'booklet', col, row, side, sheetIndex);
+    const fallbackRot = ((State.lastAutoMode || 'booklet') === 'signatures' && State.rows >= 2 && (row % 2 === 1)) ? 180 : 0;
+    return { page: fallbackPage, rot: fallbackRot, rotation: fallbackRot, offsetX: 0, offsetY: 0 };
+  }
+
+  const autoPage = computeAutoPageNumber(State.mode, col, row, side, sheetIndex);
+  const autoRot = (State.mode === 'signatures' && State.rows >= 2 && (row % 2 === 1)) ? 180 : 0;
+  return { page: autoPage, rot: autoRot, rotation: autoRot, offsetX: 0, offsetY: 0 };
+}
+
+function getCellPageNumber(col, row, side = State.currentSide, sheetIndex = State.currentSheetIndex) {
+  return getCellSlotInfo(col, row, side, sheetIndex).page;
+}
+
+function setManualSlotData(col, row, side, sheetIndex, patch) {
+  if (!State.manualSlots) State.manualSlots = {};
+  const key = `${col}_${row}_${side}_${sheetIndex}`;
+  const current = getCellSlotInfo(col, row, side, sheetIndex);
+  const nextRot = patch.rotation !== undefined
+    ? normalizeRotationAngle(patch.rotation)
+    : (patch.rot !== undefined ? normalizeRotationAngle(patch.rot) : current.rotation);
+  const nextPage = patch.page !== undefined
+    ? ((patch.page !== null && patch.page !== '' && !isNaN(parseInt(patch.page, 10)) && parseInt(patch.page, 10) > 0) ? parseInt(patch.page, 10) : null)
+    : current.page;
+  const nextOffsetX = patch.offsetX !== undefined ? (parseFloat(patch.offsetX) || 0) : (current.offsetX || 0);
+  const nextOffsetY = patch.offsetY !== undefined ? (parseFloat(patch.offsetY) || 0) : (current.offsetY || 0);
+
+  State.manualSlots[key] = {
+    page: nextPage,
+    rot: nextRot,
+    rotation: nextRot,
+    offsetX: nextOffsetX,
+    offsetY: nextOffsetY
+  };
+  return State.manualSlots[key];
+}
+
+function swapManualSlots(colA, rowA, colB, rowB, side = State.currentSide, sheetIndex = State.currentSheetIndex) {
+  // Support swapManualSlots("0_0_front_0", "1_0_front_0") or swapManualSlots("0_0", "1_0")
+  if (typeof colA === 'string' && typeof rowA === 'string') {
+    const partsA = colA.split('_');
+    const partsB = rowA.split('_');
+    const cA = parseInt(partsA[0], 10) || 0;
+    const rA = parseInt(partsA[1], 10) || 0;
+    const sA = partsA[2] || State.currentSide;
+    const shA = partsA[3] !== undefined ? parseInt(partsA[3], 10) : State.currentSheetIndex;
+    const cB = parseInt(partsB[0], 10) || 0;
+    const rB = parseInt(partsB[1], 10) || 0;
+    return swapManualSlots(cA, rA, cB, rB, sA, shA);
+  }
+  if (colA === colB && rowA === rowB) return false;
+  if (State.mode !== 'manual') {
+    const prevMode = State.mode;
+    seedManualSlotsFromAuto(prevMode, false);
+    State.lastAutoMode = prevMode;
+    State.mode = 'manual';
+    if (window.UI && UI.selectMode) UI.selectMode.value = 'manual';
+  }
+  const slotA = getCellSlotInfo(colA, rowA, side, sheetIndex);
+  const slotB = getCellSlotInfo(colB, rowB, side, sheetIndex);
+  setManualSlotData(colA, rowA, side, sheetIndex, slotB);
+  setManualSlotData(colB, rowB, side, sheetIndex, slotA);
+  updateStatusBadge();
+  renderManualSlotsPanel();
+  if (typeof renderImpositionCanvas === 'function') renderImpositionCanvas();
+  return true;
+}
+
+let draggedManualSlot = null;
+
+function renderManualSlotsPanel() {
+  const panel = document.getElementById('manualImpositionPanel');
+  const grid = document.getElementById('manualSlotsGridContainer');
+  const sheetsBadge = document.getElementById('manualSheetsCountBadge');
+  if (!panel || !grid) return;
+
+  if (State.mode !== 'manual') {
+    panel.classList.add('hidden');
+    return;
+  }
+
+  panel.classList.remove('hidden');
+  if (sheetsBadge) {
+    sheetsBadge.textContent = String(Math.max(1, State.totalSheets || 1));
+  }
+  grid.innerHTML = '';
+
+  for (let r = 0; r < State.rows; r++) {
+    for (let c = 0; c < State.cols; c++) {
+      const slotInfo = getCellSlotInfo(c, r, State.currentSide, State.currentSheetIndex);
+      const pageVal = (slotInfo.page !== null && slotInfo.page !== undefined) ? slotInfo.page : '';
+      const rotVal = slotInfo.rotation || 0;
+      const offX = slotInfo.offsetX || 0;
+      const offY = slotInfo.offsetY || 0;
+
+      const cellEl = document.createElement('div');
+      cellEl.className = 'bg-zinc-950 border border-zinc-800 hover:border-amber-500/50 rounded-lg p-1.5 flex flex-col gap-1 transition cursor-move';
+      cellEl.draggable = true;
+      cellEl.dataset.col = String(c);
+      cellEl.dataset.row = String(r);
+
+      cellEl.addEventListener('dragstart', (e) => {
+        draggedManualSlot = { col: c, row: r };
+        cellEl.classList.add('opacity-50', 'border-amber-500');
+        if (e.dataTransfer) {
+          e.dataTransfer.effectAllowed = 'move';
+          try { e.dataTransfer.setData('text/plain', `${c}_${r}`); } catch (_) {}
+        }
+      });
+      cellEl.addEventListener('dragend', () => {
+        draggedManualSlot = null;
+        cellEl.classList.remove('opacity-50', 'border-amber-500');
+      });
+      cellEl.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        cellEl.classList.add('border-amber-400', 'bg-amber-950/20');
+      });
+      cellEl.addEventListener('dragleave', () => {
+        cellEl.classList.remove('border-amber-400', 'bg-amber-950/20');
+      });
+      cellEl.addEventListener('drop', (e) => {
+        e.preventDefault();
+        cellEl.classList.remove('border-amber-400', 'bg-amber-950/20');
+        if (draggedManualSlot && (draggedManualSlot.col !== c || draggedManualSlot.row !== r)) {
+          swapManualSlots(draggedManualSlot.col, draggedManualSlot.row, c, r, State.currentSide, State.currentSheetIndex);
+          showToast(
+            State.lang === 'en'
+              ? `Swapped [${draggedManualSlot.col + 1}×${draggedManualSlot.row + 1}] ↔ [${c + 1}×${r + 1}]`
+              : `Sukeista [${draggedManualSlot.col + 1}×${draggedManualSlot.row + 1}] ↔ [${c + 1}×${r + 1}]`,
+            'info'
+          );
+        }
+        draggedManualSlot = null;
+      });
+
+      const topRow = document.createElement('div');
+      topRow.className = 'flex items-center justify-between text-[9px] font-mono';
+
+      const labelBtn = document.createElement('button');
+      labelBtn.type = 'button';
+      labelBtn.className = 'text-amber-400 hover:text-amber-300 font-bold cursor-pointer flex items-center gap-1';
+      const offsetIndicator = (offX !== 0 || offY !== 0) ? ` <span class="text-fuchsia-400">(${offX > 0 ? '+' : ''}${offX},${offY > 0 ? '+' : ''}${offY})</span>` : '';
+      labelBtn.innerHTML = `<i class="fa-solid fa-pen-to-square text-[8px]"></i> [${c + 1}×${r + 1}]${offsetIndicator}`;
+      labelBtn.title = 'Atidaryti langelio redagavimo langą';
+      labelBtn.addEventListener('click', () => {
+        if (typeof openSlotModalForCell === 'function') openSlotModalForCell(c, r);
+      });
+
+      const rotBtn = document.createElement('button');
+      rotBtn.type = 'button';
+      rotBtn.className = `px-1.5 py-0.5 rounded text-[9px] font-mono font-bold cursor-pointer transition ${
+        rotVal === 180
+          ? 'bg-amber-500 text-zinc-950'
+          : (rotVal !== 0 ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40' : 'bg-zinc-800 text-zinc-300 hover:text-white')
+      }`;
+      rotBtn.textContent = rotVal === 180 ? '180° 🔻' : `${rotVal}°`;
+      rotBtn.title = 'Spustelėkite norėdami pasukti (0° → 90° → 180° → 270°)';
+      rotBtn.addEventListener('click', () => {
+        const nextRot = (rotVal + 90) % 360;
+        setManualSlotData(c, r, State.currentSide, State.currentSheetIndex, { rotation: nextRot });
+        renderManualSlotsPanel();
+        if (typeof renderImpositionCanvas === 'function') renderImpositionCanvas();
+      });
+
+      topRow.appendChild(labelBtn);
+      topRow.appendChild(rotBtn);
+
+      const bottomRow = document.createElement('div');
+      bottomRow.className = 'flex items-center gap-1';
+
+      const pgInput = document.createElement('input');
+      pgInput.type = 'number';
+      pgInput.min = '1';
+      pgInput.placeholder = 'Tuščias';
+      pgInput.value = pageVal;
+      pgInput.className = 'w-full bg-zinc-900 border border-zinc-700 focus:border-amber-500 rounded px-1.5 py-0.5 text-[11px] font-mono text-white';
+      pgInput.addEventListener('input', (e) => {
+        const raw = e.target.value.trim();
+        const parsed = parseInt(raw, 10);
+        const newPage = (!isNaN(parsed) && parsed > 0) ? parsed : null;
+        setManualSlotData(c, r, State.currentSide, State.currentSheetIndex, { page: newPage });
+        if (newPage !== null && State.pdfJsDoc && !State.pageRenderCache[newPage]) {
+          renderPdfPageToCache(newPage);
+        }
+        if (typeof renderImpositionCanvas === 'function') renderImpositionCanvas();
+      });
+
+      bottomRow.appendChild(pgInput);
+      cellEl.appendChild(topRow);
+      cellEl.appendChild(bottomRow);
+      grid.appendChild(cellEl);
+    }
+  }
+}
+
+function getCellCreepOffsetMm(col, sheetIdx = State.currentSheetIndex) {
+  if (State.creepMm <= 0 || State.totalSheets <= 1 || State.cols < 2) {
     return 0;
   }
-  const factor = State.currentSheetIndex / Math.max(1, State.totalSheets - 1);
+  const effMode = State.mode === 'manual' ? (State.lastAutoMode || 'booklet') : State.mode;
+  if (effMode !== 'booklet' && effMode !== 'signatures') {
+    return 0;
+  }
+  const factor = sheetIdx / Math.max(1, State.totalSheets - 1);
   const shift = State.creepMm * factor;
   return (col % 2 === 0) ? shift : -shift;
 }
 
-function getCellBleed(col, row) {
-  let top = State.bleedAsymmetric ? State.bleedTop : State.bleedMm;
-  let bottom = State.bleedAsymmetric ? State.bleedBottom : State.bleedMm;
-  let left = State.bleedAsymmetric ? State.bleedLeft : State.bleedMm;
-  let right = State.bleedAsymmetric ? State.bleedRight : State.bleedMm;
+/**
+ * Computes exact press-sheet geometry (in millimeters, top-left origin) for any grid slot.
+ * Ensures 100% mathematical parity across Canvas preview, Hit-Testing, and PDF-Lib export.
+ */
+function getSlotGeometry(col, row, side = State.currentSide, sheetIndex = State.currentSheetIndex) {
+  const sourceW_mm = Math.max(1, Number(State.sourcePageWidth) || 148);
+  const sourceH_mm = Math.max(1, Number(State.sourcePageHeight) || 210);
+  const globalRot = getGlobalPageRotation();
+  const isGlobal90or270 = (globalRot === 90 || globalRot === 270);
 
-  if ((State.mode === 'booklet' || State.mode === 'signatures') && State.cols >= 2 && State.bookletZeroSpineBleed) {
+  const cellW_mm = isGlobal90or270 ? sourceH_mm : sourceW_mm;
+  const cellH_mm = isGlobal90or270 ? sourceW_mm : sourceH_mm;
+
+  const cols = Math.max(1, Number(State.cols) || 1);
+  const rows = Math.max(1, Number(State.rows) || 1);
+  const gutX_mm = Math.max(0, Number(State.gutterX) || 0);
+  const gutY_mm = Math.max(0, Number(State.gutterY) || 0);
+
+  const gridW_mm = cols * cellW_mm + Math.max(0, cols - 1) * gutX_mm;
+  const gridH_mm = rows * cellH_mm + Math.max(0, rows - 1) * gutY_mm;
+
+  const startX_mm = State.autoCenter
+    ? (State.sheetWidth - gridW_mm) / 2
+    : (Number(State.marginSide) || 0);
+  const startY_mm = State.autoCenter
+    ? (State.sheetHeight - gridH_mm) / 2
+    : (Number(State.marginTop) || 0);
+
+  const slot = getCellSlotInfo(col, row, side, sheetIndex);
+  const slotRot = normalizeRotationAngle(slot.rotation || 0);
+  const totalRot = (globalRot + slotRot) % 360;
+  const isTotal90or270 = (totalRot === 90 || totalRot === 270);
+
+  const creepMm = getCellCreepOffsetMm(col, sheetIndex);
+  const offsetX_mm = Number(slot.offsetX) || 0;
+  const offsetY_mm = Number(slot.offsetY) || 0;
+
+  const cellX_mm = startX_mm + col * (cellW_mm + gutX_mm) + creepMm + offsetX_mm;
+  const cellY_mm = startY_mm + row * (cellH_mm + gutY_mm) + offsetY_mm;
+
+  const centerX_mm = cellX_mm + cellW_mm / 2;
+  const centerY_mm = cellY_mm + cellH_mm / 2;
+
+  const trimW_mm = isTotal90or270 ? sourceH_mm : sourceW_mm;
+  const trimH_mm = isTotal90or270 ? sourceW_mm : sourceH_mm;
+  const trimX_mm = centerX_mm - trimW_mm / 2;
+  const trimY_mm = centerY_mm - trimH_mm / 2;
+
+  return {
+    slot,
+    pageNum: slot.page,
+    globalRot,
+    slotRot,
+    totalRot,
+    sourceW_mm,
+    sourceH_mm,
+    cellW_mm,
+    cellH_mm,
+    gridW_mm,
+    gridH_mm,
+    startX_mm,
+    startY_mm,
+    creepMm,
+    offsetX_mm,
+    offsetY_mm,
+    cellX_mm,
+    cellY_mm,
+    centerX_mm,
+    centerY_mm,
+    trimX_mm,
+    trimY_mm,
+    trimW_mm,
+    trimH_mm
+  };
+}
+
+/**
+ * Computes rotation-aware bleed box offsets in both sheet space (top/right/bottom/left)
+ * and unrotated page-local space (localTop/localRight/localBottom/localLeft).
+ */
+function getCellBleed(col, row, totalRotOverride = undefined) {
+  const pTop = State.bleedAsymmetric ? (Number(State.bleedTop) || 0) : (Number(State.bleedMm) || 0);
+  const pBottom = State.bleedAsymmetric ? (Number(State.bleedBottom) || 0) : (Number(State.bleedMm) || 0);
+  const pLeft = State.bleedAsymmetric ? (Number(State.bleedLeft) || 0) : (Number(State.bleedMm) || 0);
+  const pRight = State.bleedAsymmetric ? (Number(State.bleedRight) || 0) : (Number(State.bleedMm) || 0);
+
+  let totalRot;
+  if (totalRotOverride !== undefined) {
+    totalRot = normalizeRotationAngle(totalRotOverride);
+  } else {
+    const slot = getCellSlotInfo(col, row, State.currentSide, State.currentSheetIndex);
+    totalRot = (getGlobalPageRotation() + normalizeRotationAngle(slot.rotation || 0)) % 360;
+  }
+
+  // Rotate page bleeds clockwise by totalRot into sheet space
+  let top, right, bottom, left;
+  if (totalRot === 90) {
+    top = pLeft;
+    right = pTop;
+    bottom = pRight;
+    left = pBottom;
+  } else if (totalRot === 180) {
+    top = pBottom;
+    right = pLeft;
+    bottom = pTop;
+    left = pRight;
+  } else if (totalRot === 270) {
+    top = pRight;
+    right = pBottom;
+    bottom = pLeft;
+    left = pTop;
+  } else {
+    top = pTop;
+    right = pRight;
+    bottom = pBottom;
+    left = pLeft;
+  }
+
+  const effMode = State.mode === 'manual' ? (State.lastAutoMode || 'booklet') : State.mode;
+  if ((effMode === 'booklet' || effMode === 'signatures') && State.cols >= 2 && State.bookletZeroSpineBleed) {
     if (col % 2 === 0) right = 0;
     if (col % 2 === 1) left = 0;
   }
@@ -623,11 +1010,48 @@ function getCellBleed(col, row) {
     if (row < State.rows - 1) bottom = Math.min(bottom, maxHalfY);
   }
 
-  return { top, bottom, left, right };
+  // Inverse-rotate sheet-space bleeds back to local page coordinates for rotated canvas rendering
+  let localTop, localRight, localBottom, localLeft;
+  if (totalRot === 90) {
+    localTop = right;
+    localRight = bottom;
+    localBottom = left;
+    localLeft = top;
+  } else if (totalRot === 180) {
+    localTop = bottom;
+    localRight = left;
+    localBottom = top;
+    localLeft = right;
+  } else if (totalRot === 270) {
+    localTop = left;
+    localRight = top;
+    localBottom = right;
+    localLeft = bottom;
+  } else {
+    localTop = top;
+    localRight = right;
+    localBottom = bottom;
+    localLeft = left;
+  }
+
+  return {
+    top,
+    bottom,
+    left,
+    right,
+    localTop,
+    localBottom,
+    localLeft,
+    localRight
+  };
 }
 
 function recalculateImposition() {
-  const cellsPerSide = State.cols * State.rows;
+  const cellsPerSide = Math.max(1, State.cols * State.rows);
+
+  if (State.mode !== 'manual') {
+    State.lastAutoMode = State.mode;
+  }
 
   if (State.mode === 'booklet' || State.mode === 'signatures') {
     const pagesPerSheet = Math.max(4, cellsPerSide * 2);
@@ -637,11 +1061,14 @@ function recalculateImposition() {
     State.totalSheets = State.printStyle === 'single'
       ? Math.max(1, Math.ceil(State.docPageCount / cellsPerSide))
       : Math.max(1, Math.ceil(State.docPageCount / (cellsPerSide * 2)));
+  } else if (State.mode === 'manual') {
+    State.totalSheets = Math.max(1, State.totalSheets || 1);
+    seedManualSlotsFromAuto(State.lastAutoMode || 'booklet', false);
   } else {
     if (State.duplicatePages) {
       State.totalSheets = (State.printStyle === 'single' || State.printStyle === 'workandturn')
-        ? Math.max(1, State.docPageCount)
-        : Math.max(1, Math.ceil(State.docPageCount / 2));
+        ? (State.docPageCount <= 1 ? 1 : Math.max(1, State.docPageCount))
+        : (State.docPageCount <= 1 ? 1 : Math.max(1, Math.ceil(State.docPageCount / 2)));
     } else {
       State.totalSheets = State.printStyle === 'single'
         ? Math.max(1, Math.ceil(State.docPageCount / cellsPerSide))
@@ -658,38 +1085,67 @@ function recalculateImposition() {
 
   updateSheetNavigationUI();
   updateSideButtonsUI();
+  renderManualSlotsPanel();
 }
 
 function updateStatusBadge() {
-  const w = Math.round(State.sourcePageWidth);
-  const h = Math.round(State.sourcePageHeight);
+  const globalRot = getGlobalPageRotation();
+  const isRot = (globalRot === 90 || globalRot === 270);
+  const w = Math.round(isRot ? State.sourcePageHeight : State.sourcePageWidth);
+  const h = Math.round(isRot ? State.sourcePageWidth : State.sourcePageHeight);
   const totalCells = State.cols * State.rows;
   const pagesLabel = (i18n[State.lang] && i18n[State.lang].pages) ? i18n[State.lang].pages : 'psl.';
   const unitsLabel = State.lang === 'en' ? 'pcs/sheet' : 'vnt./lanke';
-  
-  let txt = (State.duplicatePages && State.mode === 'nup')
+
+  const txt = (State.duplicatePages && State.mode === 'nup')
     ? `${totalCells} ${unitsLabel} (${w}×${h} mm)`
     : `${State.docPageCount} ${pagesLabel} (${w}×${h} mm)`;
 
-  if (UI.sidebarFileStatus) UI.sidebarFileStatus.textContent = txt;
-  if (UI.mobileDocInfo) UI.mobileDocInfo.textContent = txt;
+  const sidebarStatus = UI.sidebarFileStatus || document.getElementById('sidebarFileStatus');
+  const mobileInfo = UI.mobileDocInfo || document.getElementById('mobileDocInfo');
+  const aspectBadge = UI.productAspectBadge || document.getElementById('productAspectBadge');
+  const rotBadge = UI.pageRotationBadge || document.getElementById('pageRotationBadge');
 
-  if (UI.productAspectBadge) {
+  if (sidebarStatus) sidebarStatus.textContent = txt;
+  if (mobileInfo) mobileInfo.textContent = txt;
+  if (rotBadge) rotBadge.textContent = `${globalRot}°`;
+
+  if (aspectBadge) {
     let label = `${w}×${h} mm`;
-    if (w === 148 && h === 210) label = 'A5 (148×210)';
-    else if (w === 210 && h === 297) label = 'A4 (210×297)';
-    else if (w === 105 && h === 148) label = 'A6 (105×148)';
-    else if (w === 90 && h === 50) label = 'Vizitinė (90×50)';
-    else if (w === 85 && h === 55) label = 'Euro (85×55)';
-    else if (w === 99 && h === 210) label = 'DL (99×210)';
-    UI.productAspectBadge.textContent = label;
+    if ((w === 148 && h === 210) || (w === 210 && h === 148)) label = `A5 (${w}×${h})`;
+    else if ((w === 210 && h === 297) || (w === 297 && h === 210)) label = `A4 (${w}×${h})`;
+    else if ((w === 105 && h === 148) || (w === 148 && h === 105)) label = `A6 (${w}×${h})`;
+    else if ((w === 90 && h === 50) || (w === 50 && h === 90)) label = `Vizitinė (${w}×${h})`;
+    else if ((w === 85 && h === 55) || (w === 55 && h === 85)) label = `Euro (${w}×${h})`;
+    else if ((w === 99 && h === 210) || (w === 210 && h === 99)) label = `DL (${w}×${h})`;
+    aspectBadge.textContent = label;
   }
+
+  updateSheetNavigationUI();
+  updateSideButtonsUI();
 }
 
 function updateSheetNavigationUI() {
   const isLt = State.lang !== 'en';
-  if (UI.currentSheetLabel) UI.currentSheetLabel.textContent = `${State.currentSheetIndex + 1} / ${State.totalSheets}`;
-  if (UI.canvasDimInfo) UI.canvasDimInfo.textContent = `${State.sheetPreset} • ${State.sheetWidth}×${State.sheetHeight} mm`;
+  const sheetLabel = UI.currentSheetLabel || document.getElementById('currentSheetLabel');
+  if (sheetLabel) {
+    sheetLabel.textContent = `${State.currentSheetIndex + 1} / ${Math.max(1, State.totalSheets)}`;
+  }
+  const manualCountBadge = document.getElementById('manualSheetsCountBadge');
+  if (manualCountBadge) {
+    manualCountBadge.textContent = String(Math.max(1, State.totalSheets));
+  }
+  if (UI.btnPrevSheet) {
+    UI.btnPrevSheet.disabled = State.currentSheetIndex <= 0;
+    UI.btnPrevSheet.classList.toggle('opacity-40', State.currentSheetIndex <= 0);
+  }
+  if (UI.btnNextSheet) {
+    UI.btnNextSheet.disabled = State.currentSheetIndex >= State.totalSheets - 1;
+    UI.btnNextSheet.classList.toggle('opacity-40', State.currentSheetIndex >= State.totalSheets - 1);
+  }
+  if (UI.canvasDimInfo) {
+    UI.canvasDimInfo.textContent = `${State.sheetPreset} • ${State.sheetWidth}×${State.sheetHeight} mm`;
+  }
   if (UI.statusModeLabel) {
     const modeMap = isLt
       ? { 'booklet': 'KNYGELĖ (BALNAS)', 'nup': 'N-UP / DAUGINIMAS', 'cutstack': 'PJAUK IR KRAUK', 'signatures': 'KNYGOS LANKAI', 'manual': 'RANKINIS (SPAUSK ANT LANGELIO)' }
@@ -699,10 +1155,10 @@ function updateSheetNavigationUI() {
   if (UI.statusGridLabel) {
     const totalCells = State.cols * State.rows;
     if (State.mode === 'booklet' || State.mode === 'signatures') {
-      UI.statusGridLabel.textContent = isLt 
+      UI.statusGridLabel.textContent = isLt
         ? `${State.cols} × ${State.rows} (${totalCells * 2} psl./lanke)`
         : `${State.cols} × ${State.rows} (${totalCells * 2} pages/sheet)`;
-    } else if (State.duplicatePages) {
+    } else if (State.duplicatePages && State.mode === 'nup') {
       UI.statusGridLabel.textContent = isLt
         ? `${State.cols} × ${State.rows} (${totalCells} vnt./lanke)`
         : `${State.cols} × ${State.rows} (${totalCells} pcs/sheet)`;
@@ -714,22 +1170,28 @@ function updateSheetNavigationUI() {
   }
   if (UI.statusBleedBadge) {
     const bleedPrefix = isLt ? 'UŽLAIDA' : 'BLEED';
-    const bleedText = State.bleedAsymmetric 
+    const bleedText = State.bleedAsymmetric
       ? (isLt ? `V:${State.bleedTop} A:${State.bleedBottom} K:${State.bleedLeft} D:${State.bleedRight}` : `T:${State.bleedTop} B:${State.bleedBottom} L:${State.bleedLeft} R:${State.bleedRight}`)
       : `${State.bleedMm}mm`;
     UI.statusBleedBadge.textContent = `${bleedPrefix}: ${bleedText}`;
   }
-  if (UI.bleedDisplayBadge) UI.bleedDisplayBadge.textContent = `${State.bleedMm.toFixed(1)} mm`;
-  if (UI.cropsSummaryInfo) {
-    UI.cropsSummaryInfo.textContent = isLt
+  const bleedBadge = UI.bleedDisplayBadge || document.getElementById('bleedDisplayBadge');
+  if (bleedBadge) bleedBadge.textContent = `${State.bleedMm.toFixed(1)} mm`;
+  const cropsInfo = UI.cropsSummaryInfo || document.getElementById('cropsSummaryInfo');
+  if (cropsInfo) {
+    cropsInfo.textContent = isLt
       ? `${State.bleedMm}mm užlaida • ${State.cropLength}mm ilgis • ${State.cropOffset}mm atitraukimas • ${State.cropWeight}pt • ${State.cropStyle.toUpperCase()}`
       : `${State.bleedMm}mm bleed • ${State.cropLength}mm length • ${State.cropOffset}mm offset • ${State.cropWeight}pt • ${State.cropStyle.toUpperCase()}`;
+  }
+  if (State.mode === 'manual') {
+    renderManualSlotsPanel();
   }
 }
 
 function updateSideButtonsUI() {
   const isSingle = State.printStyle === 'single';
   if (UI.btnSideBack) {
+    UI.btnSideBack.disabled = isSingle;
     if (isSingle) {
       UI.btnSideBack.classList.add('opacity-40', 'cursor-not-allowed', 'line-through');
       UI.btnSideBack.title = 'Vienpusė spauda neturi nugaros';
@@ -742,8 +1204,8 @@ function updateSideButtonsUI() {
   const isLt = State.lang !== 'en';
   if (State.currentSide === 'front') {
     if (UI.btnSideFront) UI.btnSideFront.className = 'px-2.5 py-0.5 rounded-lg font-bold text-[10px] sm:text-[11px] bg-gradient-to-r from-amber-500 to-orange-500 text-zinc-950 font-black shadow transition cursor-pointer';
-    if (UI.btnSideBack) UI.btnSideBack.className = `px-2.5 py-0.5 rounded-lg font-bold text-[10px] sm:text-[11px] text-zinc-400 hover:text-white transition cursor-pointer ${isSingle ? 'opacity-40 cursor-not-allowed' : ''}`;
-    if (UI.statusSideLabel) UI.statusSideLabel.textContent = isLt ? 'PRIEKIS (1-oji PUSĖ)' : 'FRONT (SIDE 1)';
+    if (UI.btnSideBack) UI.btnSideBack.className = `px-2.5 py-0.5 rounded-lg font-bold text-[10px] sm:text-[11px] text-zinc-400 hover:text-white transition cursor-pointer ${isSingle ? 'opacity-40 cursor-not-allowed line-through' : ''}`;
+    if (UI.statusSideLabel) UI.statusSideLabel.textContent = isSingle ? (isLt ? 'VIENPUSĖ (4+0)' : 'SIMPLEX (4+0)') : (isLt ? 'PRIEKIS (1-oji PUSĖ)' : 'FRONT (SIDE 1)');
   } else {
     if (UI.btnSideFront) UI.btnSideFront.className = 'px-2.5 py-0.5 rounded-lg font-bold text-[10px] sm:text-[11px] text-zinc-400 hover:text-white transition cursor-pointer';
     if (UI.btnSideBack) UI.btnSideBack.className = 'px-2.5 py-0.5 rounded-lg font-bold text-[10px] sm:text-[11px] bg-gradient-to-r from-amber-500 to-orange-500 text-zinc-950 font-black shadow transition cursor-pointer';
@@ -755,12 +1217,16 @@ function generateDemoPublication(pageCount = 16, w = null, h = null) {
   State.docPageCount = pageCount;
   if (w !== null) State.sourcePageWidth = w;
   if (h !== null) State.sourcePageHeight = h;
+  State.pageRotated = false;
+  State.pageRotation = 0;
   State.sourcePdfBytes = null;
   State.pdfJsDoc = null;
   State.pageRenderCache = {};
   State.pageRenderInProgress = {};
   State.pdfFileName = '';
   State.docPages = [];
+  State.currentSheetIndex = 0;
+  State.manualSlots = {};
 
   for (let i = 1; i <= pageCount; i++) {
     State.docPages.push({
@@ -771,11 +1237,13 @@ function generateDemoPublication(pageCount = 16, w = null, h = null) {
     });
   }
 
-  if (UI.inputPageWidth) UI.inputPageWidth.value = Math.round(State.sourcePageWidth);
-  if (UI.inputPageHeight) UI.inputPageHeight.value = Math.round(State.sourcePageHeight);
+  if (window.UI) {
+    if (UI.inputPageWidth) UI.inputPageWidth.value = Math.round(State.sourcePageWidth);
+    if (UI.inputPageHeight) UI.inputPageHeight.value = Math.round(State.sourcePageHeight);
+  }
 
-  updateStatusBadge();
   recalculateImposition();
+  updateStatusBadge();
   if (typeof renderImpositionCanvas === 'function') {
     renderImpositionCanvas();
   }
@@ -802,4 +1270,3 @@ function showToast(message, type = 'success') {
   }, 3000);
 }
 window.showToast = showToast;
-

@@ -4,79 +4,6 @@
 // =============================================================
 
 /**
- * Calculates total sheets required and updates imposition state.
- */
-function recalculateImposition() {
-  const cellsPerSheet = Math.max(1, State.cols * State.rows);
-
-  if (State.mode === 'booklet' || State.mode === 'signatures') {
-    const pagesPerSheet = Math.max(4, cellsPerSheet * 2);
-    const paddedCount = Math.max(pagesPerSheet, Math.ceil(State.docPageCount / pagesPerSheet) * pagesPerSheet);
-    State.totalSheets = Math.max(1, Math.ceil(paddedCount / pagesPerSheet));
-  } else if (State.mode === 'cutstack') {
-    if (State.printStyle === 'single') {
-      State.totalSheets = Math.max(1, Math.ceil(State.docPageCount / cellsPerSheet));
-    } else {
-      State.totalSheets = Math.max(1, Math.ceil(State.docPageCount / (cellsPerSheet * 2)));
-    }
-  } else if (State.mode === 'manual') {
-    State.totalSheets = Math.max(1, State.totalSheets || 1);
-  } else {
-    // N-Up mode
-    if (State.duplicatePages) {
-      State.totalSheets = 1;
-    } else {
-      if (State.printStyle === 'single') {
-        State.totalSheets = Math.max(1, Math.ceil(State.docPageCount / cellsPerSheet));
-      } else {
-        State.totalSheets = Math.max(1, Math.ceil(State.docPageCount / (cellsPerSheet * 2)));
-      }
-    }
-  }
-
-  if (State.currentSheetIndex >= State.totalSheets) {
-    State.currentSheetIndex = Math.max(0, State.totalSheets - 1);
-  }
-
-  updateSheetNavigationUI();
-}
-
-/**
- * Generates synthetic sample publication for instant testing.
- */
-function generateDemoPublication(pageCount = 16, widthMm = 148, heightMm = 210) {
-  State.sourcePageWidth = widthMm;
-  State.sourcePageHeight = heightMm;
-  State.docPageCount = pageCount;
-  State.docPages = [];
-  State.pageRenderCache = {};
-  State.pageRenderInProgress = {};
-  State.pdfJsDoc = null;
-  State.sourcePdfBytes = null;
-  State.currentSheetIndex = 0;
-
-  for (let i = 1; i <= pageCount; i++) {
-    State.docPages.push({
-      pageNumber: i,
-      title: `Puslapis ${i}`,
-      accentHue: (i * 35) % 360
-    });
-  }
-
-  if (window.UI) {
-    if (UI.inputPageWidth) UI.inputPageWidth.value = State.sourcePageWidth;
-    if (UI.inputPageHeight) UI.inputPageHeight.value = State.sourcePageHeight;
-    if (UI.sidebarFileStatus) {
-      UI.sidebarFileStatus.textContent = `${pageCount} psl. (${widthMm}×${heightMm}mm)`;
-    }
-  }
-
-  updateStatusBadge();
-  recalculateImposition();
-  if (typeof renderImpositionCanvas === 'function') renderImpositionCanvas();
-}
-
-/**
  * Handles uploaded PDF file, reading page count, trim size, and initializing PDF.js renderer.
  */
 async function handlePdfUpload(file) {
@@ -107,9 +34,12 @@ async function handlePdfUpload(file) {
 
     State.sourcePageWidth = pWidth;
     State.sourcePageHeight = pHeight;
+    State.pageRotated = false;
+    State.pageRotation = 0;
     State.docPageCount = pageCount;
     State.docPages = [];
     State.currentSheetIndex = 0;
+    State.manualSlots = {};
 
     if (window.UI) {
       if (UI.inputPageWidth) UI.inputPageWidth.value = State.sourcePageWidth;
@@ -128,6 +58,7 @@ async function handlePdfUpload(file) {
       recalculateImposition();
     } else if (pageCount === 1) {
       State.mode = 'nup';
+      State.lastAutoMode = 'nup';
       State.duplicatePages = true;
       if (window.UI && UI.selectMode) UI.selectMode.value = 'nup';
       if (window.UI && UI.checkDuplicatePages) UI.checkDuplicatePages.checked = true;
@@ -139,6 +70,7 @@ async function handlePdfUpload(file) {
       if (typeof runAutoFitMax === 'function') runAutoFitMax();
     } else if (pageCount >= 4 && pageCount % 4 === 0) {
       State.mode = 'booklet';
+      State.lastAutoMode = 'booklet';
       State.duplicatePages = false;
       State.cols = 2; State.rows = 1;
       State.gutterX = 0; State.gutterY = 0;
@@ -151,6 +83,7 @@ async function handlePdfUpload(file) {
       recalculateImposition();
     } else {
       State.mode = 'nup';
+      State.lastAutoMode = 'nup';
       State.duplicatePages = false;
       if (window.UI && UI.selectMode) UI.selectMode.value = 'nup';
       if (window.UI && UI.checkDuplicatePages) UI.checkDuplicatePages.checked = false;
@@ -179,7 +112,7 @@ async function handlePdfUpload(file) {
 
 /**
  * Production-Grade Unrestricted Imposition PDF Exporter.
- * Generates vector PDF with full visual parity to canvas prepress marks.
+ * Generates vector PDF with 100% mathematical parity to canvas preview (including 0°/90°/180°/270° rotations and manual offsets).
  */
 async function exportImposedPdf() {
   if (!window.PDFLib) {
@@ -210,19 +143,15 @@ async function exportImposedPdf() {
     }
 
     const sides = State.printStyle === 'single' ? ['front'] : ['front', 'back'];
-    const isRot = Boolean(State.pageRotation === 90 || State.pageRotated);
-    const pageW_mm = isRot ? State.sourcePageHeight : State.sourcePageWidth;
-    const pageH_mm = isRot ? State.sourcePageWidth : State.sourcePageHeight;
-    const cellWPt = pageW_mm * mmToPt;
-    const cellHPt = pageH_mm * mmToPt;
+    const baseGeom = getSlotGeometry(0, 0, 'front', 0);
+    const cellWPt = baseGeom.cellW_mm * mmToPt;
+    const cellHPt = baseGeom.cellH_mm * mmToPt;
     const gutterXPt = State.gutterX * mmToPt;
     const gutterYPt = State.gutterY * mmToPt;
-
-    const totalGridWPt = State.cols * cellWPt + (State.cols - 1) * gutterXPt;
-    const totalGridHPt = State.rows * cellHPt + (State.rows - 1) * gutterYPt;
-
-    const startXPt = State.autoCenter ? (ptW - totalGridWPt) / 2 : State.marginSide * mmToPt;
-    const startYPt = State.autoCenter ? (ptH - totalGridHPt) / 2 : State.marginTop * mmToPt;
+    const totalGridWPt = baseGeom.gridW_mm * mmToPt;
+    const totalGridHPt = baseGeom.gridH_mm * mmToPt;
+    const startXPt = baseGeom.startX_mm * mmToPt;
+    const startYPt = baseGeom.startY_mm * mmToPt;
 
     // UNRESTRICTED: loop through ALL sheets in job
     for (let s = 0; s < State.totalSheets; s++) {
@@ -233,21 +162,19 @@ async function exportImposedPdf() {
 
         for (let r = 0; r < State.rows; r++) {
           for (let c = 0; c < State.cols; c++) {
-            const slotInfo = getCellSlotInfo(c, r, side, s);
-            const pageNum = slotInfo.page;
-            const slotRot = slotInfo.rot || 0;
+            const geom = getSlotGeometry(c, r, side, s);
+            const pageNum = geom.pageNum;
+            const totalRot = geom.totalRot;
 
             if (pageNum !== null) {
-              let creepMm = 0;
-              if ((State.mode === 'booklet' || State.mode === 'signatures') && State.creepMm > 0 && State.totalSheets > 1) {
-                const factor = s / Math.max(1, State.totalSheets - 1);
-                const shift = State.creepMm * factor;
-                creepMm = (c % 2 === 0) ? shift : -shift;
-              }
-              const posX = startXPt + c * (cellWPt + gutterXPt) + (creepMm * mmToPt);
-              const posY = ptH - (startYPt + (r + 1) * cellHPt + r * gutterYPt);
+              const trimXPt = geom.trimX_mm * mmToPt;
+              const trimYPt = ptH - (geom.trimY_mm + geom.trimH_mm) * mmToPt;
+              const trimWPt = geom.trimW_mm * mmToPt;
+              const trimHPt = geom.trimH_mm * mmToPt;
+              const srcWPt = geom.sourceW_mm * mmToPt;
+              const srcHPt = geom.sourceH_mm * mmToPt;
 
-              const cellBleed = getCellBleed(c, r);
+              const cellBleed = getCellBleed(c, r, totalRot);
               const bTopPt = cellBleed.top * mmToPt;
               const bBottomPt = cellBleed.bottom * mmToPt;
               const bLeftPt = cellBleed.left * mmToPt;
@@ -255,44 +182,199 @@ async function exportImposedPdf() {
 
               const embeddedPage = await getCachedEmbeddedPage(pageNum);
               if (embeddedPage) {
-                const totalRot = ((State.pageRotated ? 90 : 0) + slotRot) % 360;
+                // Exact CW-to-CCW anchor & angle mapping preserving 1:1 unrotated source aspect ratio
                 if (totalRot === 90) {
-                  sheetPage.drawPage(embeddedPage, { x: posX + cellWPt, y: posY, width: cellHPt, height: cellWPt, rotate: PDFLib.degrees(90) });
+                  sheetPage.drawPage(embeddedPage, {
+                    x: trimXPt,
+                    y: trimYPt + trimHPt,
+                    width: srcWPt,
+                    height: srcHPt,
+                    rotate: PDFLib.degrees(270)
+                  });
                 } else if (totalRot === 180) {
-                  sheetPage.drawPage(embeddedPage, { x: posX + cellWPt, y: posY + cellHPt, width: cellWPt, height: cellHPt, rotate: PDFLib.degrees(180) });
+                  sheetPage.drawPage(embeddedPage, {
+                    x: trimXPt + trimWPt,
+                    y: trimYPt + trimHPt,
+                    width: srcWPt,
+                    height: srcHPt,
+                    rotate: PDFLib.degrees(180)
+                  });
                 } else if (totalRot === 270) {
-                  sheetPage.drawPage(embeddedPage, { x: posX, y: posY + cellHPt, width: cellHPt, height: cellWPt, rotate: PDFLib.degrees(270) });
+                  sheetPage.drawPage(embeddedPage, {
+                    x: trimXPt + trimWPt,
+                    y: trimYPt,
+                    width: srcWPt,
+                    height: srcHPt,
+                    rotate: PDFLib.degrees(90)
+                  });
                 } else {
-                  sheetPage.drawPage(embeddedPage, { x: posX, y: posY, width: cellWPt, height: cellHPt, rotate: PDFLib.degrees(0) });
+                  sheetPage.drawPage(embeddedPage, {
+                    x: trimXPt,
+                    y: trimYPt,
+                    width: srcWPt,
+                    height: srcHPt,
+                    rotate: PDFLib.degrees(0)
+                  });
                 }
               } else {
-                // Synthetic vector fallback
+                // Synthetic vector fallback with exact rotation & bleed parity
                 if (State.bleedArtwork && (bTopPt > 0 || bBottomPt > 0 || bLeftPt > 0 || bRightPt > 0)) {
                   sheetPage.drawRectangle({
-                    x: posX - bLeftPt, y: posY - bBottomPt,
-                    width: cellWPt + bLeftPt + bRightPt, height: cellHPt + bTopPt + bBottomPt,
+                    x: trimXPt - bLeftPt,
+                    y: trimYPt - bBottomPt,
+                    width: trimWPt + bLeftPt + bRightPt,
+                    height: trimHPt + bTopPt + bBottomPt,
                     color: PDFLib.rgb(0.92, 0.92, 0.94)
                   });
                 }
                 sheetPage.drawRectangle({
-                  x: posX, y: posY, width: cellWPt, height: cellHPt,
-                  borderColor: PDFLib.rgb(0.7, 0.7, 0.75), borderWidth: 0.5,
+                  x: trimXPt,
+                  y: trimYPt,
+                  width: trimWPt,
+                  height: trimHPt,
+                  borderColor: PDFLib.rgb(0.7, 0.7, 0.75),
+                  borderWidth: 0.5,
                   color: PDFLib.rgb(0.98, 0.98, 0.99)
                 });
-                sheetPage.drawText(`Psl. ${pageNum}`, {
-                  x: posX + cellWPt / 2 - 14, y: posY + cellHPt / 2 - 4, size: 11,
-                  color: PDFLib.rgb(0.3, 0.3, 0.35)
-                });
+                const labelStr = totalRot ? `P.${pageNum} (${totalRot} deg)` : `Psl. ${pageNum}`;
+                const cxPt = trimXPt + trimWPt / 2;
+                const cyPt = trimYPt + trimHPt / 2;
+                if (totalRot === 180) {
+                  sheetPage.drawText(labelStr, {
+                    x: cxPt + 18,
+                    y: cyPt + 4,
+                    size: 10,
+                    rotate: PDFLib.degrees(180),
+                    color: PDFLib.rgb(0.3, 0.3, 0.35)
+                  });
+                } else if (totalRot === 90) {
+                  sheetPage.drawText(labelStr, {
+                    x: cxPt - 4,
+                    y: cyPt + 18,
+                    size: 10,
+                    rotate: PDFLib.degrees(270),
+                    color: PDFLib.rgb(0.3, 0.3, 0.35)
+                  });
+                } else if (totalRot === 270) {
+                  sheetPage.drawText(labelStr, {
+                    x: cxPt + 4,
+                    y: cyPt - 18,
+                    size: 10,
+                    rotate: PDFLib.degrees(90),
+                    color: PDFLib.rgb(0.3, 0.3, 0.35)
+                  });
+                } else {
+                  sheetPage.drawText(labelStr, {
+                    x: cxPt - 18,
+                    y: cyPt - 4,
+                    size: 10,
+                    color: PDFLib.rgb(0.3, 0.3, 0.35)
+                  });
+                }
               }
 
               // Vector PDF crop marks (exact canvas parity)
-              drawCropMarksToPdf(sheetPage, posX, posY, cellWPt, cellHPt, c, r, bLeftPt, bRightPt, bTopPt, bBottomPt, cropWeightPt, markColor, pageNum, mmToPt);
+              drawCropMarksToPdf(
+                sheetPage,
+                trimXPt,
+                trimYPt,
+                trimWPt,
+                trimHPt,
+                c,
+                r,
+                bLeftPt,
+                bRightPt,
+                bTopPt,
+                bBottomPt,
+                cropWeightPt,
+                markColor,
+                pageNum,
+                mmToPt
+              );
             }
           }
         }
 
+        // Secondary combination block export parity (Auto-Fit Max)
+        if (State.combinationLayout && State.combinationLayout.secondary && State.combinationLayout.secondary.count > 0) {
+          const sec = State.combinationLayout.secondary;
+          const secStartX_mm = sec.strip === 'right'
+            ? (baseGeom.startX_mm + baseGeom.gridW_mm + State.gutterX)
+            : baseGeom.startX_mm;
+          const secStartY_mm = sec.strip === 'bottom'
+            ? (baseGeom.startY_mm + baseGeom.gridH_mm + State.gutterY)
+            : baseGeom.startY_mm;
+          const srcWPt = baseGeom.sourceW_mm * mmToPt;
+          const srcHPt = baseGeom.sourceH_mm * mmToPt;
+          const secWPt = sec.w * mmToPt;
+          const secHPt = sec.h * mmToPt;
+          const bPt = (State.bleedMm || 0) * mmToPt;
+
+          for (let r = 0; r < sec.rows; r++) {
+            for (let c = 0; c < sec.cols; c++) {
+              const secX_mm = secStartX_mm + c * (sec.w + State.gutterX);
+              const secY_mm = secStartY_mm + r * (sec.h + State.gutterY);
+              const trimXPt = secX_mm * mmToPt;
+              const trimYPt = ptH - (secY_mm + sec.h) * mmToPt;
+              const secCellIndex = (State.cols * State.rows) + (r * sec.cols + c);
+              const secPageNum = State.duplicatePages ? 1 : Math.min(State.docPageCount, secCellIndex + 1);
+              const embeddedPage = await getCachedEmbeddedPage(secPageNum);
+
+              if (embeddedPage) {
+                if (sec.rotated) {
+                  sheetPage.drawPage(embeddedPage, {
+                    x: trimXPt,
+                    y: trimYPt + secHPt,
+                    width: srcWPt,
+                    height: srcHPt,
+                    rotate: PDFLib.degrees(270)
+                  });
+                } else {
+                  sheetPage.drawPage(embeddedPage, {
+                    x: trimXPt,
+                    y: trimYPt,
+                    width: srcWPt,
+                    height: srcHPt,
+                    rotate: PDFLib.degrees(0)
+                  });
+                }
+              } else {
+                sheetPage.drawRectangle({
+                  x: trimXPt,
+                  y: trimYPt,
+                  width: secWPt,
+                  height: secHPt,
+                  borderColor: PDFLib.rgb(0.7, 0.7, 0.75),
+                  borderWidth: 0.5,
+                  color: PDFLib.rgb(0.98, 0.98, 0.99)
+                });
+              }
+
+              drawCropMarksToPdf(
+                sheetPage,
+                trimXPt,
+                trimYPt,
+                secWPt,
+                secHPt,
+                c + State.cols,
+                r,
+                bPt,
+                bPt,
+                bPt,
+                bPt,
+                cropWeightPt,
+                markColor,
+                secPageNum,
+                mmToPt
+              );
+            }
+          }
+        }
+
+        const effMode = State.mode === 'manual' ? (State.lastAutoMode || 'booklet') : State.mode;
+
         // Spine fold marks
-        if (State.foldMarks && (State.mode === 'booklet' || State.mode === 'signatures') && State.cols >= 2) {
+        if (State.foldMarks && (effMode === 'booklet' || effMode === 'signatures') && State.cols >= 2) {
           const foldTickPt = 8 * mmToPt;
           const gridTopYPt = ptH - startYPt;
           const gridBotYPt = ptH - (startYPt + totalGridHPt);
@@ -341,7 +423,7 @@ async function exportImposedPdf() {
         }
 
         // Collating mark
-        if (State.collatingMarks && (State.mode === 'booklet' || State.mode === 'signatures') && State.totalSheets > 1 && State.cols >= 2) {
+        if (State.collatingMarks && (effMode === 'booklet' || effMode === 'signatures') && State.totalSheets > 1 && State.cols >= 2) {
           const spineXPt = startXPt + cellWPt + gutterXPt / 2;
           const stepHPt = totalGridHPt / (State.totalSheets + 1);
           const markYPt = ptH - (startYPt + (s + 1) * stepHPt);
@@ -379,14 +461,20 @@ async function exportImposedPdf() {
 
           for (let r = 0; r < State.rows; r++) {
             for (let c = 0; c < State.cols; c++) {
-              const pNum = getCellPageNumber(c, r, 'front', s);
-              if (pNum !== null) {
-                const cPosX = startXPt + c * (cellWPt + gutterXPt);
-                const cPosY = ptH - (startYPt + (r + 1) * cellHPt + r * gutterYPt);
+              const cutGeom = getSlotGeometry(c, r, 'front', s);
+              if (cutGeom.pageNum !== null) {
+                const cPosX = cutGeom.trimX_mm * mmToPt;
+                const cPosY = ptH - (cutGeom.trimY_mm + cutGeom.trimH_mm) * mmToPt;
+                const cWPt = cutGeom.trimW_mm * mmToPt;
+                const cHPt = cutGeom.trimH_mm * mmToPt;
                 cutPage.drawRectangle({
-                  x: cPosX - cutOffsetPt, y: cPosY - cutOffsetPt,
-                  width: cellWPt + cutOffsetPt * 2, height: cellHPt + cutOffsetPt * 2,
-                  borderColor: PDFLib.rgb(1, 0, 1), borderWidth: 1, color: undefined
+                  x: cPosX - cutOffsetPt,
+                  y: cPosY - cutOffsetPt,
+                  width: cWPt + cutOffsetPt * 2,
+                  height: cHPt + cutOffsetPt * 2,
+                  borderColor: PDFLib.rgb(1, 0, 1),
+                  borderWidth: 1,
+                  color: undefined
                 });
               }
             }

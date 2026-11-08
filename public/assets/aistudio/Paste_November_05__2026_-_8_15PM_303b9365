@@ -1,0 +1,687 @@
+DO NOT regenerate the whole file. Perform a complete, unified replacement of the imposition interactive engine, canvas event listeners, history stack, and export functions inside <script> with this robust, zero-crash implementation:
+
+/* ==========================================================================
+   0. ERROR SHIELD & SAFE WRAPPERS
+   ========================================================================== */
+window.safeRun = function(fn, fallback = null, context = 'Operation') {
+  try {
+    return fn();
+  } catch (err) {
+    console.warn(`[Impozitor Shield] ${context} klaida:`, err);
+    return fallback;
+  }
+};
+
+/* ==========================================================================
+   1. GLOBAL STATE INITIALIZATION & DEFENSIVE CHECKS
+   ========================================================================== */
+window.state = window.state || {};
+state.sheet = state.sheet || { width: 320, height: 450 };
+state.slots = Array.isArray(state.slots) ? state.slots : [];
+state.selectedSlots = Array.isArray(state.selectedSlots) ? state.selectedSlots : [];
+state.selectedSlotId = state.selectedSlotId || null;
+state.isGridLocked = Boolean(state.isGridLocked);
+state.impositionMode = state.impositionMode || 'manual';
+state.activePage = Number(state.activePage) || 1;
+state.zoom = Number(state.zoom) || 1;
+state.panX = Number(state.panX) || 0;
+state.panY = Number(state.panY) || 0;
+
+/* ==========================================================================
+   2. HISTORY STACK (UNDO / REDO)
+   ========================================================================== */
+state.history = state.history || [];
+state.historyIndex = typeof state.historyIndex === 'number' ? state.historyIndex : -1;
+const MAX_HISTORY = 50;
+
+window.pushHistoryState = function(label = 'action') {
+  safeRun(() => {
+    if (state.historyIndex < state.history.length - 1) {
+      state.history = state.history.slice(0, state.historyIndex + 1);
+    }
+    state.history.push({
+      slots: JSON.parse(JSON.stringify(state.slots || [])),
+      label: label,
+      time: Date.now()
+    });
+    if (state.history.length > MAX_HISTORY) state.history.shift();
+    else state.historyIndex++;
+  }, null, 'pushHistoryState');
+};
+
+window.undoAction = function() {
+  safeRun(() => {
+    if (state.historyIndex > 0) {
+      state.historyIndex--;
+      const snap = state.history[state.historyIndex];
+      if (snap && Array.isArray(snap.slots)) {
+        state.slots = JSON.parse(JSON.stringify(snap.slots));
+        state.selectedSlots = [];
+        state.selectedSlotId = null;
+        window.updateSlotCounter();
+        if (typeof renderCanvas === 'function') renderCanvas();
+      }
+    }
+  }, null, 'undoAction');
+};
+
+window.redoAction = function() {
+  safeRun(() => {
+    if (state.historyIndex < state.history.length - 1) {
+      state.historyIndex++;
+      const snap = state.history[state.historyIndex];
+      if (snap && Array.isArray(snap.slots)) {
+        state.slots = JSON.parse(JSON.stringify(snap.slots));
+        state.selectedSlots = [];
+        state.selectedSlotId = null;
+        window.updateSlotCounter();
+        if (typeof renderCanvas === 'function') renderCanvas();
+      }
+    }
+  }, null, 'redoAction');
+};
+
+window.updateSlotCounter = function() {
+  safeRun(() => {
+    const activeCount = (state.slots || []).filter(s => s && s.page != null && !s.deleted).length;
+    document.querySelectorAll('span, div').forEach(el => {
+      const txt = el.textContent || '';
+      if (txt.includes('slots/sheet') || txt.includes('psl./lanko')) {
+        el.textContent = `(${activeCount} slots/sheet)`;
+      }
+    });
+  }, null, 'updateSlotCounter');
+};
+
+/* ==========================================================================
+   3. BULLETPROOF COORDINATE TRANSLATION
+   ========================================================================== */
+window.getSheetCoords = function(e) {
+  const fallback = { mmX: 0, mmY: 0 };
+  if (!e) return fallback;
+
+  const canvas = document.querySelector('canvas');
+  if (!canvas) return fallback;
+
+  return safeRun(() => {
+    const rect = canvas.getBoundingClientRect();
+    if (!rect.width || !rect.height) return fallback;
+
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+
+    const rawCanvasX = (e.clientX - rect.left) * scaleX;
+    const rawCanvasY = (e.clientY - rect.top) * scaleY;
+
+    const zoom = Math.max(0.01, Number(state.zoom) || 1);
+    const basePxPerMm = Math.max(0.01, Number(state.pxPerMm) || 1);
+    const totalScale = basePxPerMm * zoom;
+
+    const sheetW = Number(state.sheet?.width) || 320;
+    const sheetH = Number(state.sheet?.height) || 450;
+
+    const originX = (canvas.width - sheetW * totalScale) / 2 + (Number(state.panX) || 0);
+    const originY = (canvas.height - sheetH * totalScale) / 2 + (Number(state.panY) || 0);
+
+    return {
+      mmX: (rawCanvasX - originX) / totalScale,
+      mmY: (rawCanvasY - originY) / totalScale
+    };
+  }, fallback, 'getSheetCoords');
+};
+
+/* ==========================================================================
+   4. ALPHA CONTOUR TRACER (Safe Canvas Sandbox)
+   ========================================================================== */
+window.traceAlphaContour = function(imgOrCanvas, threshold = 25) {
+  if (!imgOrCanvas) return null;
+
+  return safeRun(() => {
+    const offCanvas = document.createElement('canvas');
+    const maxDim = 200;
+    const origW = imgOrCanvas.naturalWidth || imgOrCanvas.videoWidth || imgOrCanvas.width || 100;
+    const origH = imgOrCanvas.naturalHeight || imgOrCanvas.videoHeight || imgOrCanvas.height || 100;
+
+    const scale = Math.min(1, maxDim / Math.max(origW, origH));
+    const w = Math.max(10, Math.floor(origW * scale));
+    const h = Math.max(10, Math.floor(origH * scale));
+
+    offCanvas.width = w;
+    offCanvas.height = h;
+    const ctx = offCanvas.getContext('2d', { willReadFrequently: true });
+    if (!ctx) return null;
+
+    ctx.drawImage(imgOrCanvas, 0, 0, w, h);
+    let imgData;
+    try {
+      imgData = ctx.getImageData(0, 0, w, h);
+    } catch (corsErr) {
+      console.warn("Alpha nuskaitymas blokuojamas CORS politikos, taikomas stačiakampis:", corsErr);
+      return null;
+    }
+
+    const d = imgData.data;
+    let hasAlpha = false;
+    for (let i = 3; i < d.length; i += 4) {
+      if (d[i] < 240) { hasAlpha = true; break; }
+    }
+    if (!hasAlpha) return null;
+
+    let startX = -1, startY = -1;
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        if (d[(y * w + x) * 4 + 3] > threshold) {
+          startX = x; startY = y; break;
+        }
+      }
+      if (startX !== -1) break;
+    }
+    if (startX === -1) return null;
+
+    const neighbors = [[-1,0],[-1,-1],[0,-1],[1,-1],[1,0],[1,1],[0,1],[-1,1]];
+    const rawPoints = [];
+    let curX = startX, curY = startY, backDir = 0, iters = 0;
+
+    do {
+      rawPoints.push({ x: curX / w, y: curY / h });
+      let found = false;
+      for (let i = 0; i < 8; i++) {
+        const dir = (backDir + i) % 8;
+        const nx = curX + neighbors[dir][0];
+        const ny = curY + neighbors[dir][1];
+        if (nx >= 0 && nx < w && ny >= 0 && ny < h && d[(ny * w + nx) * 4 + 3] > threshold) {
+          curX = nx; curY = ny; backDir = (dir + 5) % 8; found = true; break;
+        }
+      }
+      if (!found) break;
+      iters++;
+    } while ((curX !== startX || curY !== startY) && iters < (w * h));
+
+    const simplified = [];
+    const step = Math.max(1, Math.floor(rawPoints.length / 60));
+    for (let i = 0; i < rawPoints.length; i += step) simplified.push(rawPoints[i]);
+    return simplified.length >= 3 ? simplified : null;
+  }, null, 'traceAlphaContour');
+};
+
+/* ==========================================================================
+   5. ROTATION-AWARE CROP MARKS (Individual L-Shapes)
+   ========================================================================== */
+window.drawCropMarks = function(ctx, isPdf = false, pdfPage = null, rgb = null) {
+  safeRun(() => {
+    const activeSlots = (state.slots || []).filter(s => s && !s.deleted && s.page != null);
+    if (activeSlots.length === 0) return;
+
+    const ptPerMm = 72 / 25.4;
+    const markLen = Number(state.markLength || 4);
+    const markOffset = Number(state.markOffset || 2);
+    const bleed = Number(state.bleed ?? 2);
+    const totalOffset = markOffset + bleed;
+
+    function drawSeg(x1, y1, x2, y2) {
+      if (isPdf && pdfPage && rgb) {
+        const sheetH = Number(state.sheet?.height) || 450;
+        pdfPage.drawLine({
+          start: { x: x1 * ptPerMm, y: (sheetH - y1) * ptPerMm },
+          end: { x: x2 * ptPerMm, y: (sheetH - y2) * ptPerMm },
+          thickness: 0.25,
+          color: rgb(0, 0, 0)
+        });
+      } else if (ctx) {
+        ctx.save();
+        ctx.strokeStyle = '#000000';
+        ctx.lineWidth = 0.5 / (state.zoom || 1);
+        ctx.beginPath();
+        ctx.moveTo(x1, y1);
+        ctx.lineTo(x2, y2);
+        ctx.stroke();
+        ctx.restore();
+      }
+    }
+
+    activeSlots.forEach(slot => {
+      const x1 = slot.x, y1 = slot.y;
+      const x2 = slot.x + slot.width, y2 = slot.y + slot.height;
+      const corners = [
+        { x: x1, y: y1, dx: -1, dy: -1 },
+        { x: x2, y: y1, dx: 1, dy: -1 },
+        { x: x1, y: y2, dx: -1, dy: 1 },
+        { x: x2, y: y2, dx: 1, dy: 1 }
+      ];
+      corners.forEach(c => {
+        drawSeg(c.x + c.dx * totalOffset, c.y, c.x + c.dx * (totalOffset + markLen), c.y);
+        drawSeg(c.x, c.y + c.dy * totalOffset, c.x, c.y + c.dy * (totalOffset + markLen));
+      });
+    });
+  }, null, 'drawCropMarks');
+};
+
+/* ==========================================================================
+   6. INTERACTIVE CANVAS CONTROLS (Multi-Drag, Rotate, Delete, Assign)
+   ========================================================================== */
+state.isDraggingGroup = false;
+state.dragStartMouse = { x: 0, y: 0 };
+state.dragInitialSlots = [];
+
+const canvas = document.querySelector('canvas');
+if (canvas) {
+  canvas.onmousedown = function(e) {
+    if (e.button !== 0 || state.isSpacePressed) return;
+
+    safeRun(() => {
+      const { mmX, mmY } = window.getSheetCoords(e);
+      const clickedSlot = (state.slots || []).find(s => 
+        s && mmX >= s.x && mmX <= (s.x + s.width) &&
+        mmY >= s.y && mmY <= (s.y + s.height)
+      );
+
+      // MANUAL ASSIGN TO EMPTY CELL
+      if (state.impositionMode === 'manual' && clickedSlot && (clickedSlot.page == null || clickedSlot.deleted)) {
+        window.pushHistoryState('Priskirtas puslapis');
+        clickedSlot.page = Number(state.activePage || 1);
+        clickedSlot.deleted = false;
+        state.selectedSlotId = clickedSlot.id;
+        state.selectedSlots = [clickedSlot.id];
+        window.updateSlotCounter();
+        if (typeof renderCanvas === 'function') renderCanvas();
+        return;
+      }
+
+      // SELECT & INITIATE DRAG
+      if (clickedSlot && !clickedSlot.deleted && clickedSlot.page != null) {
+        const isMultiKey = e.shiftKey || e.ctrlKey || e.metaKey;
+
+        if (!state.selectedSlots.includes(clickedSlot.id) && !isMultiKey) {
+          state.selectedSlots = [clickedSlot.id];
+          state.selectedSlotId = clickedSlot.id;
+        } else if (isMultiKey) {
+          if (state.selectedSlots.includes(clickedSlot.id)) {
+            state.selectedSlots = state.selectedSlots.filter(id => id !== clickedSlot.id);
+          } else {
+            state.selectedSlots.push(clickedSlot.id);
+          }
+          state.selectedSlotId = clickedSlot.id;
+        }
+
+        state.isDraggingGroup = true;
+        state.dragStartMouse = { x: mmX, y: mmY };
+        state.dragInitialSlots = (state.selectedSlots || []).map(id => {
+          const s = state.slots.find(x => x && x.id === id);
+          return s ? { slot: s, startX: s.x, startY: s.y } : null;
+        }).filter(Boolean);
+
+        canvas.style.cursor = 'grabbing';
+        if (typeof renderCanvas === 'function') renderCanvas();
+      } else {
+        if (!e.shiftKey && !e.ctrlKey) {
+          state.selectedSlots = [];
+          state.selectedSlotId = null;
+          if (typeof renderCanvas === 'function') renderCanvas();
+        }
+      }
+    }, null, 'canvas.onmousedown');
+  };
+
+  canvas.ondblclick = function(e) {
+    e.preventDefault();
+    safeRun(() => {
+      const { mmX, mmY } = window.getSheetCoords(e);
+      const clickedSlot = (state.slots || []).find(s => 
+        s && !s.deleted && s.page != null &&
+        mmX >= s.x && mmX <= (s.x + s.width) &&
+        mmY >= s.y && mmY <= (s.y + s.height)
+      );
+
+      if (clickedSlot) {
+        window.pushHistoryState('Pasukimas 90°');
+        clickedSlot.rotation = ((Number(clickedSlot.rotation) || 0) + 90) % 360;
+        const tmp = clickedSlot.width;
+        clickedSlot.width = clickedSlot.height;
+        clickedSlot.height = tmp;
+        if (typeof renderCanvas === 'function') renderCanvas();
+      }
+    }, null, 'canvas.ondblclick');
+  };
+}
+
+// Window mousemove / mouseup (Safe single registration)
+window.removeEventListener('mousemove', window._safeMouseMoveHandler);
+window._safeMouseMoveHandler = function(e) {
+  if (!state.isDraggingGroup || !state.dragInitialSlots || state.dragInitialSlots.length === 0) return;
+
+  safeRun(() => {
+    const { mmX, mmY } = window.getSheetCoords(e);
+    const deltaX = mmX - state.dragStartMouse.x;
+    const deltaY = mmY - state.dragStartMouse.y;
+
+    const sheetW = Number(state.sheet?.width) || 320;
+    const sheetH = Number(state.sheet?.height) || 450;
+
+    state.dragInitialSlots.forEach(item => {
+      if (!item.slot) return;
+      item.slot.x = Math.max(0, Math.min(sheetW - item.slot.width, Math.round((item.startX + deltaX) * 10) / 10));
+      item.slot.y = Math.max(0, Math.min(sheetH - item.slot.height, Math.round((item.startY + deltaY) * 10) / 10));
+    });
+
+    if (typeof renderCanvas === 'function') renderCanvas();
+  }, null, 'window.mousemove');
+};
+window.addEventListener('mousemove', window._safeMouseMoveHandler);
+
+window.removeEventListener('mouseup', window._safeMouseUpHandler);
+window._safeMouseUpHandler = function() {
+  if (state.isDraggingGroup) {
+    safeRun(() => {
+      const moved = (state.dragInitialSlots || []).some(i => i && (i.slot.x !== i.startX || i.slot.y !== i.startY));
+      if (moved) window.pushHistoryState('Perkėlimas');
+      state.isDraggingGroup = false;
+      state.dragInitialSlots = [];
+      const cvs = document.querySelector('canvas');
+      if (cvs) cvs.style.cursor = 'default';
+      if (typeof renderCanvas === 'function') renderCanvas();
+    }, null, 'window.mouseup');
+  }
+};
+window.addEventListener('mouseup', window._safeMouseUpHandler);
+
+// Window keydown (Undo, Redo, Delete, Rotate)
+window.removeEventListener('keydown', window._safeKeyDownHandler);
+window._safeKeyDownHandler = function(e) {
+  if (['INPUT', 'TEXTAREA'].includes(document.activeElement?.tagName)) return;
+
+  safeRun(() => {
+    const isCtrl = e.ctrlKey || e.metaKey;
+
+    if (isCtrl && (e.key === 'z' || e.key === 'Z')) {
+      e.preventDefault();
+      if (e.shiftKey) window.redoAction();
+      else window.undoAction();
+      return;
+    }
+
+    if (isCtrl && (e.key === 'y' || e.key === 'Y')) {
+      e.preventDefault();
+      window.redoAction();
+      return;
+    }
+
+    if (e.key === 'Delete' || e.key === 'Backspace') {
+      if (!state.selectedSlots || state.selectedSlots.length === 0) return;
+      e.preventDefault();
+      window.pushHistoryState('Ištrynimas');
+
+      const idsToDelete = new Set(state.selectedSlots);
+      state.slots = (state.slots || []).filter(s => s && !idsToDelete.has(s.id));
+      state.selectedSlots = [];
+      state.selectedSlotId = null;
+
+      window.updateSlotCounter();
+      if (typeof renderCanvas === 'function') renderCanvas();
+      return;
+    }
+
+    if (e.key === 'r' || e.key === 'R') {
+      if (!state.selectedSlots || state.selectedSlots.length === 0) return;
+      window.pushHistoryState('Pasukimas 90°');
+      state.selectedSlots.forEach(id => {
+        const slot = (state.slots || []).find(s => s && s.id === id);
+        if (slot) {
+          slot.rotation = ((Number(slot.rotation) || 0) + 90) % 360;
+          const tmp = slot.width;
+          slot.width = slot.height;
+          slot.height = tmp;
+        }
+      });
+      if (typeof renderCanvas === 'function') renderCanvas();
+    }
+  }, null, 'window.keydown');
+};
+window.addEventListener('keydown', window._safeKeyDownHandler);
+
+/* ==========================================================================
+   7. GRID LOCK / UNLOCK TOGGLE
+   ========================================================================== */
+window.toggleGridLock = function() {
+  safeRun(() => {
+    state.isGridLocked = !state.isGridLocked;
+    const btn = document.getElementById('btnLockGrid') || 
+                Array.from(document.querySelectorAll('button')).find(b => (b.textContent || '').includes('Lock') || (b.textContent || '').includes('Unlock'));
+    const inputs = Array.from(document.querySelectorAll('input')).filter(i => {
+      const parentTxt = i.closest('div')?.textContent || '';
+      return parentTxt.includes('Columns') || parentTxt.includes('Rows');
+    });
+
+    inputs.forEach(input => {
+      if (state.isGridLocked) {
+        input.disabled = true;
+        input.classList.add('opacity-50', 'cursor-not-allowed');
+      } else {
+        input.disabled = false;
+        input.removeAttribute('disabled');
+        input.removeAttribute('readonly');
+        input.classList.remove('opacity-50', 'cursor-not-allowed');
+      }
+    });
+
+    if (btn) btn.innerHTML = state.isGridLocked ? '🔒 Locked' : '🔓 Unlock';
+  }, null, 'toggleGridLock');
+};
+
+/* ==========================================================================
+   8. ROBUST SVG EXPORT & CLIPBOARD (Adobe Illustrator Ready)
+   ========================================================================== */
+window.generateSvgCutContour = function() {
+  return safeRun(() => {
+    const sheetW = Number(state.sheet?.width) || 320;
+    const sheetH = Number(state.sheet?.height) || 450;
+    const activeSlots = (state.slots || []).filter(s => s && !s.deleted && s.page != null);
+
+    let svg = `<?xml version="1.0" encoding="utf-8"?>\n`;
+    svg += `<svg version="1.1" xmlns="http://www.w3.org/2000/svg" width="${sheetW}mm" height="${sheetH}mm" viewBox="0 0 ${sheetW} ${sheetH}">\n`;
+    svg += `  <g id="Plotter_Marks" fill="#000000" stroke="none">\n`;
+
+    const m = 8, r = 2;
+    const dots = [{x:m,y:m},{x:sheetW-m,y:m},{x:m,y:sheetH-m},{x:sheetW-m,y:sheetH-m}];
+    dots.forEach(d => { svg += `    <circle cx="${d.x}" cy="${d.y}" r="${r}" />\n`; });
+    svg += `  </g>\n`;
+
+    svg += `  <g id="CutContour" fill="none" stroke="#FF00FF" stroke-width="0.25">\n`;
+    const alphaPts = state.cachedContourPoints;
+
+    activeSlots.forEach(s => {
+      if (alphaPts && alphaPts.length >= 3) {
+        const poly = alphaPts.map(p => `${(s.x + p.x * s.width).toFixed(2)},${(s.y + p.y * s.height).toFixed(2)}`).join(' ');
+        svg += `    <polygon points="${poly}" />\n`;
+      } else {
+        svg += `    <rect x="${s.x}" y="${s.y}" width="${s.width}" height="${s.height}" />\n`;
+      }
+    });
+    svg += `  </g>\n</svg>`;
+    return svg;
+  }, '<svg></svg>', 'generateSvgCutContour');
+};
+
+window.copyToClipboard = function(text) {
+  return new Promise((resolve, reject) => {
+    if (navigator.clipboard && window.isSecureContext) {
+      navigator.clipboard.writeText(text).then(resolve).catch(() => fallback(text, resolve, reject));
+    } else {
+      fallback(text, resolve, reject);
+    }
+
+    function fallback(str, res, rej) {
+      try {
+        const el = document.createElement('textarea');
+        el.value = str;
+        el.style.position = 'fixed';
+        el.style.left = '-9999px';
+        document.body.appendChild(el);
+        el.select();
+        const ok = document.execCommand('copy');
+        document.body.removeChild(el);
+        if (ok) res(); else rej(new Error('Copy failed'));
+      } catch (err) {
+        rej(err);
+      }
+    }
+  });
+};
+
+/* ==========================================================================
+   9. DUAL-PAGE PDF EXPORT ENGINE (Page 1 = Print, Page 2 = CutContour)
+   ========================================================================== */
+window.downloadImpositionPDF = async function() {
+  if (!window.PDFLib) {
+    alert("Klaida: PDFLib biblioteka nepasiekiama. Patikrinkite interneto ryšį.");
+    return;
+  }
+
+  const { PDFDocument, rgb, degrees } = window.PDFLib;
+  const ptPerMm = 72 / 25.4;
+
+  const sheetW = Number(state.sheet?.width) || 320;
+  const sheetH = Number(state.sheet?.height) || 450;
+  const sheetW_pt = sheetW * ptPerMm;
+  const sheetH_pt = sheetH * ptPerMm;
+
+  const activeSlots = (state.slots || []).filter(s => s && !s.deleted && s.page != null);
+  if (activeSlots.length === 0) {
+    alert("Lape nėra aktyvių gaminių.");
+    return;
+  }
+
+  let srcDoc = null;
+  try {
+    if (state.sourcePdfDoc) srcDoc = state.sourcePdfDoc;
+    else if (state.pdfDoc) srcDoc = state.pdfDoc;
+    else if (state.pdfBytes || state.sourcePdfBytes) srcDoc = await PDFDocument.load(state.pdfBytes || state.sourcePdfBytes);
+    else if (window.currentPdfBytes) srcDoc = await PDFDocument.load(window.currentPdfBytes);
+  } catch (err) {
+    console.warn("Nepavyko nuskaityti pirminio PDF tiesiogiai:", err);
+  }
+
+  const outPdf = await PDFDocument.create();
+  let embeddedPage = null;
+  if (srcDoc) {
+    try {
+      const [emb] = await outPdf.embedPdf(srcDoc, [0]);
+      embeddedPage = emb;
+    } catch (e) {
+      console.warn("Klaida embedinant puslapį:", e);
+    }
+  }
+
+  function drawOpticalMarks(targetPage) {
+    const m = 8 * ptPerMm;
+    const r = 2 * ptPerMm;
+    const dots = [
+      { x: m, y: m },
+      { x: sheetW_pt - m, y: m },
+      { x: m, y: sheetH_pt - m },
+      { x: sheetW_pt - m, y: sheetH_pt - m }
+    ];
+    dots.forEach(d => targetPage.drawCircle({ x: d.x, y: d.y, size: r, color: rgb(0,0,0) }));
+  }
+
+  // --- PAGE 1: PRINT LAYER ---
+  const printPage = outPdf.addPage([sheetW_pt, sheetH_pt]);
+  drawOpticalMarks(printPage);
+
+  activeSlots.forEach(slot => {
+    const slotX_pt = slot.x * ptPerMm;
+    const slotY_pt = (sheetH - slot.y - slot.height) * ptPerMm;
+    const slotW_pt = slot.width * ptPerMm;
+    const slotH_pt = slot.height * ptPerMm;
+    const rot = (Number(slot.rotation || 0) + Number(state.globalRot || 0)) % 360;
+
+    if (embeddedPage) {
+      if (rot === 90) {
+        printPage.drawPage(embeddedPage, {
+          x: slotX_pt + slotW_pt,
+          y: slotY_pt,
+          width: slotH_pt,
+          height: slotW_pt,
+          rotate: degrees(90)
+        });
+      } else if (rot === 270) {
+        printPage.drawPage(embeddedPage, {
+          x: slotX_pt,
+          y: slotY_pt + slotH_pt,
+          width: slotH_pt,
+          height: slotW_pt,
+          rotate: degrees(-90)
+        });
+      } else {
+        printPage.drawPage(embeddedPage, {
+          x: slotX_pt,
+          y: slotY_pt,
+          width: slotW_pt,
+          height: slotH_pt,
+          rotate: degrees(0)
+        });
+      }
+    }
+  });
+
+  window.drawCropMarks(null, true, printPage, rgb);
+
+  // --- PAGE 2: CUTCONTOUR LAYER ---
+  const cutPage = outPdf.addPage([sheetW_pt, sheetH_pt]);
+  drawOpticalMarks(cutPage);
+
+  const alphaPts = state.cachedContourPoints;
+  activeSlots.forEach(slot => {
+    const slotX_pt = slot.x * ptPerMm;
+    const slotY_pt = (sheetH - slot.y - slot.height) * ptPerMm;
+    const slotW_pt = slot.width * ptPerMm;
+    const slotH_pt = slot.height * ptPerMm;
+
+    if (alphaPts && alphaPts.length >= 3) {
+      for (let i = 0; i < alphaPts.length; i++) {
+        const p1 = alphaPts[i];
+        const p2 = alphaPts[(i + 1) % alphaPts.length];
+        cutPage.drawLine({
+          start: { x: slotX_pt + p1.x * slotW_pt, y: slotY_pt + (1 - p1.y) * slotH_pt },
+          end: { x: slotX_pt + p2.x * slotW_pt, y: slotY_pt + (1 - p2.y) * slotH_pt },
+          thickness: 0.25,
+          color: rgb(1, 0, 1)
+        });
+      }
+    } else {
+      cutPage.drawRectangle({
+        x: slotX_pt,
+        y: slotY_pt,
+        width: slotW_pt,
+        height: slotH_pt,
+        borderColor: rgb(1, 0, 1),
+        borderWidth: 0.25
+      });
+    }
+  });
+
+  const pdfBytes = await outPdf.save();
+  const filename = `Impozicija_PrintAndCut_2Psl_${sheetW}x${sheetH}mm.pdf`;
+  const blob = new Blob([pdfBytes], { type: 'application/pdf' });
+
+  if (typeof window.triggerRealDownload === 'function') {
+    window.triggerRealDownload(blob, filename, 'application/pdf');
+  } else {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 500);
+  }
+};
+
+window.exportPDF = window.downloadImpositionPDF;
+
+// Take initial state snapshot safely
+setTimeout(() => {
+  if (state.slots && state.slots.length > 0 && state.history.length === 0) {
+    window.pushHistoryState('Pradinis lankas');
+  }
+  window.updateSlotCounter();
+}, 400);

@@ -3,10 +3,6 @@
 // Prepress Optimization & Sheet Capacity Algorithms
 // =============================================================
 
-/**
- * Standard Auto-Fit: evaluates 0° vs 90° uniform orientation
- * to maximize single-sheet capacity based on fencepost geometry.
- */
 function runAutoFit(e) {
   if (e && typeof e.preventDefault === 'function') {
     e.preventDefault();
@@ -31,30 +27,21 @@ function runAutoFit(e) {
 
   State.combinationLayout = null;
 
-  // Retrieve exact physical dimensions
-  const sheetW = (window.UI && UI.inputSheetWidth && parseFloat(UI.inputSheetWidth.value) > 0)
-    ? parseFloat(UI.inputSheetWidth.value)
-    : (State.sheetWidth || 320);
-  const sheetH = (window.UI && UI.inputSheetHeight && parseFloat(UI.inputSheetHeight.value) > 0)
-    ? parseFloat(UI.inputSheetHeight.value)
-    : (State.sheetHeight || 450);
+  // Always derive from immutable base unrotated sheet and page dimensions in State
+  const sheetW = Math.max(10, Number(State.sheetWidth) || 320);
+  const sheetH = Math.max(10, Number(State.sheetHeight) || 450);
+  const naturalW = Math.max(10, Number(State.sourcePageWidth) || 148);
+  const naturalH = Math.max(10, Number(State.sourcePageHeight) || 210);
 
-  const naturalW = (window.UI && UI.inputPageWidth && parseFloat(UI.inputPageWidth.value) > 0)
-    ? parseFloat(UI.inputPageWidth.value)
-    : (State.sourcePageWidth || 148);
-  const naturalH = (window.UI && UI.inputPageHeight && parseFloat(UI.inputPageHeight.value) > 0)
-    ? parseFloat(UI.inputPageHeight.value)
-    : (State.sourcePageHeight || 210);
-
-  const marginLeft = Math.max(0, State.marginSide || 0);
+  const marginLeft = Math.max(0, Number(State.marginSide) || 0);
   const marginRight = marginLeft;
-  const marginTop = Math.max(0, State.marginTop || 0);
+  const marginTop = Math.max(0, Number(State.marginTop) || 0);
   const marginBottom = marginTop;
   const availableW = Math.max(10, sheetW - marginLeft - marginRight);
   const availableH = Math.max(10, sheetH - marginTop - marginBottom);
 
-  const gutX = Math.max(0, State.gutterX || 0);
-  const gutY = Math.max(0, State.gutterY || 0);
+  const gutX = Math.max(0, Number(State.gutterX) || 0);
+  const gutY = Math.max(0, Number(State.gutterY) || 0);
 
   // Step-and-repeat fencepost calculation (+0.01 floating point tolerance)
   // Orientation A: 0° (Normal: naturalW along W, naturalH along H)
@@ -73,7 +60,7 @@ function runAutoFit(e) {
   const bestRows = rotate ? rowsB : rowsA;
   const bestYield = bestCols * bestRows;
 
-  // Update layout result variables
+  // Update layout result variables without mutating immutable State.sourcePageWidth / Height
   State.cols = bestCols;
   State.rows = bestRows;
   State.pageRotation = rotate ? 90 : 0;
@@ -86,12 +73,15 @@ function runAutoFit(e) {
     if (window.UI && UI.checkDuplicatePages) UI.checkDuplicatePages.checked = true;
   }
 
-  // Sync layout inputs
-  if (window.UI) {
-    if (UI.inputCols) UI.inputCols.value = bestCols;
-    if (UI.inputRows) UI.inputRows.value = bestRows;
-    if (UI.checkAutoCenter) UI.checkAutoCenter.checked = true;
-  }
+  // Sync layout inputs with effective oriented dimensions
+  const effW = rotate ? naturalH : naturalW;
+  const effH = rotate ? naturalW : naturalH;
+  if (UI.inputCols) UI.inputCols.value = bestCols;
+  if (UI.inputRows) UI.inputRows.value = bestRows;
+  if (UI.inputPageWidth) UI.inputPageWidth.value = Math.round(effW);
+  if (UI.inputPageHeight) UI.inputPageHeight.value = Math.round(effH);
+  if (UI.pageRotationBadge) UI.pageRotationBadge.textContent = rotate ? '90°' : '0°';
+  if (UI.checkAutoCenter) UI.checkAutoCenter.checked = true;
 
   const sheetArea = sheetW * sheetH;
   const totalItemArea = bestYield * (naturalW * naturalH);
@@ -106,7 +96,11 @@ function runAutoFit(e) {
 
   if (typeof updateStatusBadge === 'function') updateStatusBadge();
   if (typeof recalculateImposition === 'function') recalculateImposition();
-  if (typeof renderImpositionCanvas === 'function') renderImpositionCanvas();
+  if (typeof fitViewport === 'function') {
+    fitViewport('fit');
+  } else if (typeof renderImpositionCanvas === 'function') {
+    renderImpositionCanvas();
+  }
 }
 
 /**
@@ -134,29 +128,21 @@ function runAutoFitMax(e) {
     if (window.UI && UI.selectMode) UI.selectMode.value = 'nup';
   }
 
-  const sheetW = (window.UI && UI.inputSheetWidth && parseFloat(UI.inputSheetWidth.value) > 0)
-    ? parseFloat(UI.inputSheetWidth.value)
-    : (State.sheetWidth || 320);
-  const sheetH = (window.UI && UI.inputSheetHeight && parseFloat(UI.inputSheetHeight.value) > 0)
-    ? parseFloat(UI.inputSheetHeight.value)
-    : (State.sheetHeight || 450);
+  // Always derive from immutable base unrotated sheet and page dimensions in State
+  const sheetW = Math.max(10, Number(State.sheetWidth) || 320);
+  const sheetH = Math.max(10, Number(State.sheetHeight) || 450);
+  const naturalW = Math.max(10, Number(State.sourcePageWidth) || 148);
+  const naturalH = Math.max(10, Number(State.sourcePageHeight) || 210);
 
-  const naturalW = (window.UI && UI.inputPageWidth && parseFloat(UI.inputPageWidth.value) > 0)
-    ? parseFloat(UI.inputPageWidth.value)
-    : (State.sourcePageWidth || 148);
-  const naturalH = (window.UI && UI.inputPageHeight && parseFloat(UI.inputPageHeight.value) > 0)
-    ? parseFloat(UI.inputPageHeight.value)
-    : (State.sourcePageHeight || 210);
-
-  const marginLeft = Math.max(0, State.marginSide || 0);
+  const marginLeft = Math.max(0, Number(State.marginSide) || 0);
   const marginRight = marginLeft;
-  const marginTop = Math.max(0, State.marginTop || 0);
+  const marginTop = Math.max(0, Number(State.marginTop) || 0);
   const marginBottom = marginTop;
   const availableW = Math.max(10, sheetW - marginLeft - marginRight);
   const availableH = Math.max(10, sheetH - marginTop - marginBottom);
 
-  const gutX = Math.max(0, State.gutterX || 0);
-  const gutY = Math.max(0, State.gutterY || 0);
+  const gutX = Math.max(0, Number(State.gutterX) || 0);
+  const gutY = Math.max(0, Number(State.gutterY) || 0);
 
   let bestCandidate = null;
 
@@ -225,13 +211,13 @@ function runAutoFitMax(e) {
     }
   }
 
-  // Bounds for primary 0°
+  // Bounds for primary 0° (naturalW along W, naturalH along H)
   const maxC_0 = Math.max(1, Math.floor((availableW + gutX + 0.01) / (naturalW + gutX)));
   const maxR_0 = Math.max(1, Math.floor((availableH + gutY + 0.01) / (naturalH + gutY)));
 
-  // Bounds for primary 90°
+  // Bounds for primary 90° (naturalH along W, naturalW along H)
   const maxC_90 = Math.max(1, Math.floor((availableW + gutX + 0.01) / (naturalH + gutX)));
-  const maxR_90 = Math.max(1, Math.floor((availableH + gutY + 0.01) / (naturalH + gutY)));
+  const maxR_90 = Math.max(1, Math.floor((availableH + gutY + 0.01) / (naturalW + gutY)));
 
   // Uniform candidates
   evaluateCandidate(false, maxC_0, maxR_0, 'none');
@@ -253,7 +239,7 @@ function runAutoFitMax(e) {
 
   if (!bestCandidate) return;
 
-  // Apply best candidate
+  // Apply best candidate without mutating immutable State.sourcePageWidth / Height
   State.cols = bestCandidate.primary.cols;
   State.rows = bestCandidate.primary.rows;
   State.pageRotation = bestCandidate.primary.rotated ? 90 : 0;
@@ -267,11 +253,15 @@ function runAutoFitMax(e) {
     if (window.UI && UI.checkDuplicatePages) UI.checkDuplicatePages.checked = true;
   }
 
-  if (window.UI) {
-    if (UI.inputCols) UI.inputCols.value = bestCandidate.primary.cols;
-    if (UI.inputRows) UI.inputRows.value = bestCandidate.primary.rows;
-    if (UI.checkAutoCenter) UI.checkAutoCenter.checked = true;
-  }
+  const primRot = bestCandidate.primary.rotated;
+  const effW = primRot ? naturalH : naturalW;
+  const effH = primRot ? naturalW : naturalH;
+  if (UI.inputCols) UI.inputCols.value = bestCandidate.primary.cols;
+  if (UI.inputRows) UI.inputRows.value = bestCandidate.primary.rows;
+  if (UI.inputPageWidth) UI.inputPageWidth.value = Math.round(effW);
+  if (UI.inputPageHeight) UI.inputPageHeight.value = Math.round(effH);
+  if (UI.pageRotationBadge) UI.pageRotationBadge.textContent = primRot ? '90°' : '0°';
+  if (UI.checkAutoCenter) UI.checkAutoCenter.checked = true;
 
   const isLt = State.lang !== 'en';
   let toastMsg = '';
@@ -294,7 +284,11 @@ function runAutoFitMax(e) {
 
   if (typeof updateStatusBadge === 'function') updateStatusBadge();
   if (typeof recalculateImposition === 'function') recalculateImposition();
-  if (typeof renderImpositionCanvas === 'function') renderImpositionCanvas();
+  if (typeof fitViewport === 'function') {
+    fitViewport('fit');
+  } else if (typeof renderImpositionCanvas === 'function') {
+    renderImpositionCanvas();
+  }
 }
 
 // Function Aliases for flexible call sites

@@ -3,6 +3,31 @@
 // High-Precision Prepress Marks Engine (Canvas & Vector PDF Parity)
 // =============================================================
 
+function computeCropMarkOffsets(bleed, scaleFactor) {
+  const markOffset = (typeof State.cropOffset === 'number' ? State.cropOffset : 2) * scaleFactor;
+  const bL = (bleed.left || 0) * scaleFactor;
+  const bR = (bleed.right || 0) * scaleFactor;
+  const bT = (bleed.top || 0) * scaleFactor;
+  const bB = (bleed.bottom || 0) * scaleFactor;
+
+  if (State.cropOffsetOrigin === 'trim') {
+    return {
+      bL, bR, bT, bB,
+      offL: markOffset,
+      offR: markOffset,
+      offT: markOffset,
+      offB: markOffset
+    };
+  }
+  return {
+    bL, bR, bT, bB,
+    offL: bL + markOffset,
+    offR: bR + markOffset,
+    offT: bT + markOffset,
+    offB: bB + markOffset
+  };
+}
+
 function drawCropMarks(ctx, x, y, w, h, mmToPx, colIndex, rowIndex, bleed, pageNum) {
   if (State.cutContourEnabled && State.plotterMarks) return;
 
@@ -17,19 +42,9 @@ function drawCropMarks(ctx, x, y, w, h, mmToPx, colIndex, rowIndex, bleed, pageN
   if (isMinimal && !isLeft && !isRight && !isTop && !isBottom) return;
 
   let markLen = (typeof State.cropLength === 'number' ? State.cropLength : 5) * mmToPx;
-  const markOffset = (typeof State.cropOffset === 'number' ? State.cropOffset : 2) * mmToPx;
   if (State.cropStyle === 'ticks') markLen = 2.5 * mmToPx;
 
-  const bL = (bleed.left || 0) * mmToPx;
-  const bR = (bleed.right || 0) * mmToPx;
-  const bT = (bleed.top || 0) * mmToPx;
-  const bB = (bleed.bottom || 0) * mmToPx;
-
-  // Prepress Mark Offset: marks start strictly beyond Bleed box
-  const offL = bL + markOffset;
-  const offR = bR + markOffset;
-  const offT = bT + markOffset;
-  const offB = bB + markOffset;
+  const { bL, bR, bT, bB, offL, offR, offT, offB } = computeCropMarkOffsets(bleed, mmToPx);
 
   ctx.strokeStyle = State.markInking === 'k100' ? '#18181b' : '#000000';
   ctx.lineWidth = Math.max(0.4, State.cropWeight * (mmToPx / 2.834));
@@ -37,7 +52,6 @@ function drawCropMarks(ctx, x, y, w, h, mmToPx, colIndex, rowIndex, bleed, pageN
   ctx.beginPath();
 
   if (isMinimal) {
-    // Top perimeter ticks: extending upwards into margin
     if (isTop) {
       if (isLeft || State.gutterX > 0) {
         ctx.moveTo(x, y - offT);
@@ -46,8 +60,6 @@ function drawCropMarks(ctx, x, y, w, h, mmToPx, colIndex, rowIndex, bleed, pageN
       ctx.moveTo(x + w, y - offT);
       ctx.lineTo(x + w, y - offT - markLen);
     }
-
-    // Bottom perimeter ticks: extending downwards into margin
     if (isBottom) {
       if (isLeft || State.gutterX > 0) {
         ctx.moveTo(x, y + h + offB);
@@ -56,8 +68,6 @@ function drawCropMarks(ctx, x, y, w, h, mmToPx, colIndex, rowIndex, bleed, pageN
       ctx.moveTo(x + w, y + h + offB);
       ctx.lineTo(x + w, y + h + offB + markLen);
     }
-
-    // Left perimeter ticks: extending leftwards into margin
     if (isLeft) {
       if (isTop || State.gutterY > 0) {
         ctx.moveTo(x - offL, y);
@@ -66,8 +76,6 @@ function drawCropMarks(ctx, x, y, w, h, mmToPx, colIndex, rowIndex, bleed, pageN
       ctx.moveTo(x - offL, y + h);
       ctx.lineTo(x - offL - markLen, y + h);
     }
-
-    // Right perimeter ticks: extending rightwards into margin
     if (isRight) {
       if (isTop || State.gutterY > 0) {
         ctx.moveTo(x + w + offR, y);
@@ -76,9 +84,10 @@ function drawCropMarks(ctx, x, y, w, h, mmToPx, colIndex, rowIndex, bleed, pageN
       ctx.moveTo(x + w + offR, y + h);
       ctx.lineTo(x + w + offR + markLen, y + h);
     }
+    ctx.stroke();
   } else {
-    // Full mode: draw corner marks for every individual cell/gutter
-    const isBooklet = (State.mode === 'booklet' || State.mode === 'signatures') && State.cols >= 2;
+    const effMode = State.mode === 'manual' ? (State.lastAutoMode || 'booklet') : State.mode;
+    const isBooklet = (effMode === 'booklet' || effMode === 'signatures') && State.cols >= 2;
     const isSpineRight = isBooklet && (colIndex % 2 === 0);
     const isSpineLeft = isBooklet && (colIndex % 2 === 1);
 
@@ -95,9 +104,48 @@ function drawCropMarks(ctx, x, y, w, h, mmToPx, colIndex, rowIndex, bleed, pageN
     }
     ctx.moveTo(x + w, y - offT); ctx.lineTo(x + w, y - offT - markLen);
     ctx.moveTo(x + w, y + h + offB); ctx.lineTo(x + w, y + h + offB + markLen);
-  }
 
-  ctx.stroke();
+    if (State.cropStyle === 'double') {
+      if (bL > 0 || bT > 0) {
+        ctx.moveTo(x - offL, y - bT); ctx.lineTo(x - offL - markLen, y - bT);
+        ctx.moveTo(x - bL, y - offT); ctx.lineTo(x - bL, y - offT - markLen);
+      }
+      if (bR > 0 || bT > 0) {
+        ctx.moveTo(x + w + offR, y - bT); ctx.lineTo(x + w + offR + markLen, y - bT);
+        ctx.moveTo(x + w + bR, y - offT); ctx.lineTo(x + w + bR, y - offT - markLen);
+      }
+      if (bL > 0 || bB > 0) {
+        ctx.moveTo(x - offL, y + h + bB); ctx.lineTo(x - offL - markLen, y + h + bB);
+        ctx.moveTo(x - bL, y + h + offB); ctx.lineTo(x - bL, y + h + offB + markLen);
+      }
+      if (bR > 0 || bB > 0) {
+        ctx.moveTo(x + w + offR, y + h + bB); ctx.lineTo(x + w + offR + markLen, y + h + bB);
+        ctx.moveTo(x + w + bR, y + h + offB); ctx.lineTo(x + w + bR, y + h + offB + markLen);
+      }
+    }
+
+    ctx.stroke();
+
+    if (State.cropStyle === 'cross') {
+      const radPx = 1.6 * mmToPx;
+      const corners = [];
+      if (!isSpineLeft) {
+        corners.push({ cx: x - offL - markLen / 2, cy: y });
+        corners.push({ cx: x - offL - markLen / 2, cy: y + h });
+      }
+      if (!isSpineRight) {
+        corners.push({ cx: x + w + offR + markLen / 2, cy: y });
+        corners.push({ cx: x + w + offR + markLen / 2, cy: y + h });
+      }
+      corners.forEach(pt => {
+        ctx.beginPath();
+        ctx.arc(pt.cx, pt.cy, radPx, 0, Math.PI * 2);
+        ctx.moveTo(pt.cx, pt.cy - radPx * 1.6);
+        ctx.lineTo(pt.cx, pt.cy + radPx * 1.6);
+        ctx.stroke();
+      });
+    }
+  }
 
   if (State.pageLabels && pageNum !== null && (isMinimal ? (isTop && isLeft) : true)) {
     ctx.fillStyle = '#71717a';
@@ -113,11 +161,11 @@ function drawCropMarksToPdf(sheetPage, posX, posY, cellWPt, cellHPt, c, r, bLeft
   const markOffsetPt = (typeof State.cropOffset === 'number' ? State.cropOffset : 2) * mmToPt;
   const markLenPt = (State.cropStyle === 'ticks' ? 2.5 : (typeof State.cropLength === 'number' ? State.cropLength : 5)) * mmToPt;
 
-  // Prepress Mark Offset: marks start strictly beyond Bleed box
-  const offLPt = bLeftPt + markOffsetPt;
-  const offRPt = bRightPt + markOffsetPt;
-  const offTPt = bTopPt + markOffsetPt;
-  const offBPt = bBottomPt + markOffsetPt;
+  const isFromTrim = State.cropOffsetOrigin === 'trim';
+  const offLPt = isFromTrim ? markOffsetPt : (bLeftPt + markOffsetPt);
+  const offRPt = isFromTrim ? markOffsetPt : (bRightPt + markOffsetPt);
+  const offTPt = isFromTrim ? markOffsetPt : (bTopPt + markOffsetPt);
+  const offBPt = isFromTrim ? markOffsetPt : (bBottomPt + markOffsetPt);
 
   if (State.cropMarksMode === 'minimal' || State.cropStyle === 'perimeter') {
     const isLeft = c === 0;
@@ -127,28 +175,24 @@ function drawCropMarksToPdf(sheetPage, posX, posY, cellWPt, cellHPt, c, r, bLeft
 
     if (!isLeft && !isRight && !isTop && !isBottom) return;
 
-    // Top perimeter ticks (extending UP)
     if (isTop) {
       if (isLeft || State.gutterX > 0) {
         sheetPage.drawLine({ start: { x: posX, y: posY + cellHPt + offTPt }, end: { x: posX, y: posY + cellHPt + offTPt + markLenPt }, thickness: cropWeightPt, color: markColor });
       }
       sheetPage.drawLine({ start: { x: posX + cellWPt, y: posY + cellHPt + offTPt }, end: { x: posX + cellWPt, y: posY + cellHPt + offTPt + markLenPt }, thickness: cropWeightPt, color: markColor });
     }
-    // Bottom perimeter ticks (extending DOWN)
     if (isBottom) {
       if (isLeft || State.gutterX > 0) {
         sheetPage.drawLine({ start: { x: posX, y: posY - offBPt }, end: { x: posX, y: posY - offBPt - markLenPt }, thickness: cropWeightPt, color: markColor });
       }
       sheetPage.drawLine({ start: { x: posX + cellWPt, y: posY - offBPt }, end: { x: posX + cellWPt, y: posY - offBPt - markLenPt }, thickness: cropWeightPt, color: markColor });
     }
-    // Left perimeter ticks (extending LEFT)
     if (isLeft) {
       if (isTop || State.gutterY > 0) {
         sheetPage.drawLine({ start: { x: posX - offLPt, y: posY + cellHPt }, end: { x: posX - offLPt - markLenPt, y: posY + cellHPt }, thickness: cropWeightPt, color: markColor });
       }
       sheetPage.drawLine({ start: { x: posX - offLPt, y: posY }, end: { x: posX - offLPt - markLenPt, y: posY }, thickness: cropWeightPt, color: markColor });
     }
-    // Right perimeter ticks (extending RIGHT)
     if (isRight) {
       if (isTop || State.gutterY > 0) {
         sheetPage.drawLine({ start: { x: posX + cellWPt + offRPt, y: posY + cellHPt }, end: { x: posX + cellWPt + offRPt + markLenPt, y: posY + cellHPt }, thickness: cropWeightPt, color: markColor });
@@ -160,7 +204,8 @@ function drawCropMarksToPdf(sheetPage, posX, posY, cellWPt, cellHPt, c, r, bLeft
     }
     return;
   } else {
-    const isBooklet = (State.mode === 'booklet' || State.mode === 'signatures') && State.cols >= 2;
+    const effMode = State.mode === 'manual' ? (State.lastAutoMode || 'booklet') : State.mode;
+    const isBooklet = (effMode === 'booklet' || effMode === 'signatures') && State.cols >= 2;
     const isSpineRight = isBooklet && (c % 2 === 0);
     const isSpineLeft = isBooklet && (c % 2 === 1);
 

@@ -3,7 +3,7 @@
 // Application Controller, DOM Binding, Modal & Event Management
 // =============================================================
 
-const UI = {};
+window.UI = UI;
 
 /**
  * Caches all DOM element references into UI object for rapid access.
@@ -11,21 +11,25 @@ const UI = {};
 function cacheDomElements() {
   const ids = [
     'impositionCanvas', 'viewportContainer', 'dragDropOverlay',
-    'mainWorkspace', 'viewportArea', 'settingsArea', 'mobileSubToolbar',
+    'mainWorkspace', 'previewArea', 'settingsArea', 'mobileSubToolbar',
     'layoutToggleBtn', 'layoutToggleBtnMobile', 'layoutToggleLabel', 'layoutToggleLabelMobile',
     'btnLayoutToggleMobile', 'tabBtnPreview', 'tabBtnSplit', 'tabBtnSettings',
     'btnLangLt', 'btnLangEn', 'btnLangLtMobile', 'btnLangEnMobile',
-    'btnOpenPdf', 'btnSavePdf', 'btnSampleDoc', 'pdfFileInput', 'sidebarFileStatus',
+    'btnOpenPdf', 'btnSavePdf', 'btnSampleDoc', 'pdfFileInput', 'sidebarFileStatus', 'mobileDocInfo',
+    'inputAiPrompt', 'btnRunAiPrompt',
     'btnPrevSheet', 'btnNextSheet', 'btnSideFront', 'btnSideBack', 'btnAutoPlay',
-    'sheetCounterDisplay', 'statusModeLabel', 'statusGridLabel', 'statusBleedBadge', 'statusSideLabel',
+    'currentSheetLabel', 'sheetCounterDisplay', 'statusModeLabel', 'statusGridLabel', 'statusBleedBadge', 'statusSideLabel',
+    'productAspectBadge', 'bleedDisplayBadge', 'cropsSummaryInfo',
     'canvasDimInfo', 'zoomLevelDisplay', 'zoomSlider',
     'btnZoomIn', 'btnZoomOut', 'btnZoomFit',
     'btnZoomInFloat', 'btnZoomOutFloat', 'btnZoomFitFloat', 'btnZoom100Float', 'btnZoomResetPan', 'btnRotateView',
-    'selectMode', 'inputPageWidth', 'inputPageHeight', 'btnRotatePage',
+    'selectMode', 'manualImpositionPanel', 'manualSlotsGridContainer', 'btnSeedManualSlots', 'btnClearManualSlots',
+    'btnAddManualSheet', 'btnRemoveManualSheet', 'manualSheetsCountBadge',
+    'inputPageWidth', 'inputPageHeight', 'btnRotatePage', 'pageRotationBadge',
     'btnAutoFit', 'btnAutoFitMax', 'btnLockGrid', 'iconLockGrid', 'labelLockGrid',
     'selectSheetPreset', 'inputSheetWidth', 'inputSheetHeight', 'selectPrintStyle',
     'inputCols', 'inputRows', 'inputGutterX', 'inputGutterY', 'checkDuplicatePages',
-    'inputMarginTop', 'inputMarginSide', 'checkAutoCenter',
+    'inputMarginTop', 'inputMarginSide', 'checkAutoCenter', 'inputCreep', 'creepValLabel',
     'inputBleed', 'btnMatchGuttersToBleed', 'checkBleedBox', 'checkBleedArtwork', 'checkClipBleed', 'checkZeroSpineBleed',
     'checkAsymmetricBleed', 'asymmetricBleedContainer',
     'inputBleedTop', 'inputBleedBottom', 'inputBleedLeft', 'inputBleedRight',
@@ -38,7 +42,9 @@ function cacheDomElements() {
     'selectPreset', 'presetDescription', 'btnSavePresetModal', 'btnExportPresets', 'btnImportPresets', 'presetFileInput',
     'savePresetModalElement', 'modalPresetName', 'modalPresetCategory', 'btnCancelPresetModal', 'btnCancelPresetModal2', 'btnConfirmSavePreset',
     'btnSaveCustomSize', 'saveSheetModalElement', 'modalSheetName', 'modalSheetW', 'modalSheetH', 'btnCancelSheetModal', 'btnCancelSheetModal2', 'btnConfirmSaveSheet',
-    'slotEditModal', 'slotModalTitle', 'inputSlotPageNum', 'btnSetSlotEmpty', 'btnCloseSlotModal', 'btnCancelSlotModal', 'btnSaveSlotConfig'
+    'slotEditModal', 'slotModalTitle', 'inputSlotPageNum', 'inputSlotOffsetX', 'inputSlotOffsetY', 'btnResetSlotOffset',
+    'selectSwapTargetSlot', 'btnSwapSlotWithTarget',
+    'btnSetSlotEmpty', 'btnCloseSlotModal', 'btnCancelSlotModal', 'btnSaveSlotConfig'
   ];
 
   ids.forEach(id => {
@@ -47,191 +53,243 @@ function cacheDomElements() {
 }
 
 /**
+ * Deterministic Quick Prepress Command Parser (parses sheet sizes, product formats, modes, rotations, bleeds, gutters).
+ */
+function runQuickPrepressCommand(rawText) {
+  const cmd = String(rawText || '').trim().toLowerCase();
+  if (!cmd) {
+    showToast(State.lang === 'en' ? 'Enter a prepress command (e.g. A5 booklet SRA3 3mm)' : 'Įveskite komandą (pvz.: A5 bukletas SRA3 3mm)', 'info');
+    return;
+  }
+
+  State.combinationLayout = null;
+
+  // 1. Sheet size detection
+  if (cmd.includes('sra3+') || cmd.includes('330x488')) {
+    State.sheetWidth = 330; State.sheetHeight = 488; State.sheetPreset = 'SRA3Plus';
+  } else if (cmd.includes('sra3') || cmd.includes('320x450')) {
+    State.sheetWidth = 320; State.sheetHeight = 450; State.sheetPreset = 'SRA3';
+  } else if (cmd.includes('b2') || cmd.includes('500x700')) {
+    State.sheetWidth = 500; State.sheetHeight = 700; State.sheetPreset = 'B2';
+  } else if (cmd.includes('b3') || cmd.includes('353x500')) {
+    State.sheetWidth = 353; State.sheetHeight = 500; State.sheetPreset = 'B3';
+  } else if (cmd.includes('b1') || cmd.includes('700x1000')) {
+    State.sheetWidth = 700; State.sheetHeight = 1000; State.sheetPreset = 'B1';
+  } else if (/\ba3\b/.test(cmd) || cmd.includes('297x420')) {
+    State.sheetWidth = 297; State.sheetHeight = 420; State.sheetPreset = 'A3';
+  }
+
+  // 2. Product format detection
+  if (cmd.includes('90x50') || cmd.includes('vizitin')) {
+    State.sourcePageWidth = 90; State.sourcePageHeight = 50;
+    State.pageRotated = false; State.pageRotation = 0;
+  } else if (cmd.includes('85x55')) {
+    State.sourcePageWidth = 85; State.sourcePageHeight = 55;
+    State.pageRotated = false; State.pageRotation = 0;
+  } else if (/\ba5\b/.test(cmd) || cmd.includes('148x210')) {
+    State.sourcePageWidth = 148; State.sourcePageHeight = 210;
+    State.pageRotated = false; State.pageRotation = 0;
+  } else if (/\ba6\b/.test(cmd) || cmd.includes('105x148')) {
+    State.sourcePageWidth = 105; State.sourcePageHeight = 148;
+    State.pageRotated = false; State.pageRotation = 0;
+  } else if (/\bdl\b/.test(cmd) || cmd.includes('99x210')) {
+    State.sourcePageWidth = 99; State.sourcePageHeight = 210;
+    State.pageRotated = false; State.pageRotation = 0;
+  } else if (/\ba4\b/.test(cmd) || cmd.includes('210x297')) {
+    State.sourcePageWidth = 210; State.sourcePageHeight = 297;
+    State.pageRotated = false; State.pageRotation = 0;
+  }
+
+  // 3. Mode detection
+  if (cmd.includes('manual') || cmd.includes('rankin')) {
+    if (State.mode !== 'manual') {
+      State.lastAutoMode = State.mode;
+      seedManualSlotsFromAuto(State.lastAutoMode, false);
+    }
+    State.mode = 'manual';
+  } else if (cmd.includes('booklet') || cmd.includes('buklet') || cmd.includes('baln')) {
+    State.mode = 'booklet'; State.lastAutoMode = 'booklet';
+  } else if (cmd.includes('cut') || cmd.includes('stack') || cmd.includes('pjauk')) {
+    State.mode = 'cutstack'; State.lastAutoMode = 'cutstack';
+  } else if (cmd.includes('sig') || cmd.includes('knyg') || cmd.includes('16-up')) {
+    State.mode = 'signatures'; State.lastAutoMode = 'signatures';
+  } else if (cmd.includes('step') || cmd.includes('repeat') || cmd.includes('daugin') || cmd.includes('vizitin') || cmd.includes('90x50')) {
+    State.mode = 'steprepeat'; State.lastAutoMode = 'steprepeat';
+  }
+
+  // 4. Rotation detection
+  const rotMatch = cmd.match(/\b(0|90|180|270)\s*(?:deg|°|laipsn)/);
+  if (rotMatch) {
+    const r = normalizeRotationAngle(parseInt(rotMatch[1], 10));
+    State.pageRotation = r;
+    State.pageRotated = (r === 90 || r === 270);
+  }
+
+  // 5. Bleed detection (e.g. "3mm" or "bleed 3" or "užlaida 2")
+  const bleedMatch = cmd.match(/(?:bleed|užlaida|uzlaida)\s*(\d+(?:\.\d+)?)/) || cmd.match(/\b(\d+(?:\.\d+)?)\s*mm\b/);
+  if (bleedMatch) {
+    State.bleedMm = Math.max(0, parseFloat(bleedMatch[1]) || 0);
+    if (UI.inputBleed) UI.inputBleed.value = State.bleedMm;
+  }
+
+  // 6. Grid CxR or Auto-Fit
+  const gridMatch = cmd.match(/\b(\d{1,2})\s*[x×]\s*(\d{1,2})\b/);
+  if (gridMatch && parseInt(gridMatch[1], 10) <= 20 && parseInt(gridMatch[2], 10) <= 20) {
+    State.cols = Math.max(1, parseInt(gridMatch[1], 10));
+    State.rows = Math.max(1, parseInt(gridMatch[2], 10));
+  } else if (cmd.includes('max')) {
+    runAutoFitMax();
+    return;
+  } else if (cmd.includes('auto') || cmd.includes('fit') || cmd.includes('talpin') || cmd.includes('vizitin')) {
+    runAutoFit();
+    return;
+  }
+
+  // Sync UI controls
+  const isSwapped = State.pageRotated;
+  if (UI.inputPageWidth) UI.inputPageWidth.value = Math.round(isSwapped ? State.sourcePageHeight : State.sourcePageWidth);
+  if (UI.inputPageHeight) UI.inputPageHeight.value = Math.round(isSwapped ? State.sourcePageWidth : State.sourcePageHeight);
+  if (UI.pageRotationBadge) UI.pageRotationBadge.textContent = `${getGlobalPageRotation()}°`;
+  if (UI.inputSheetWidth) UI.inputSheetWidth.value = State.sheetWidth;
+  if (UI.inputSheetHeight) UI.inputSheetHeight.value = State.sheetHeight;
+  if (UI.selectSheetPreset) UI.selectSheetPreset.value = State.sheetPreset;
+  if (UI.selectMode) UI.selectMode.value = State.mode;
+  if (UI.inputCols) UI.inputCols.value = State.cols;
+  if (UI.inputRows) UI.inputRows.value = State.rows;
+
+  updateStatusBadge();
+  recalculateImposition();
+  if (typeof renderImpositionCanvas === 'function') renderImpositionCanvas();
+  showToast(State.lang === 'en' ? `Applied command: ${rawText}` : `Pritaikyta komanda: ${rawText}`, 'success');
+}
+
+/**
  * Switches between Side-by-Side Desktop layout and Mobile Stacked layout.
  */
 function applyLayoutMode(mode) {
   State.layoutMode = mode;
-  const isDesktop = mode === 'desktop';
+  const isDesktop = mode === "desktop";
 
-  if (UI.mainWorkspace) {
+  document.body.classList.toggle("layout-desktop", isDesktop);
+  document.body.classList.toggle("layout-mobile", !isDesktop);
+
+  const mainWs = document.getElementById("mainWorkspace") || UI.mainWorkspace;
+  const prevArea = document.getElementById("previewArea") || UI.previewArea;
+  const setArea = document.getElementById("settingsArea") || UI.settingsArea;
+
+  if (mainWs) {
     if (isDesktop) {
-      UI.mainWorkspace.className = 'flex flex-row flex-1 overflow-hidden relative';
+      mainWs.className = "flex flex-row flex-1 overflow-hidden relative";
     } else {
-      UI.mainWorkspace.className = 'flex flex-col flex-1 overflow-hidden relative';
+      mainWs.className = "flex flex-col flex-1 overflow-hidden relative";
     }
   }
 
-  if (UI.viewportArea) {
-    if (isDesktop) {
-      UI.viewportArea.style.height = '';
-      UI.viewportArea.style.flex = '1 1 0%';
-    } else {
-      applyMobileTab(State.mobileTab || 'split');
+  if (isDesktop) {
+    if (prevArea) {
+      prevArea.style.display = "flex";
+      prevArea.style.height = "100%";
+      prevArea.style.flex = "1 1 0%";
     }
+    if (setArea) {
+      setArea.style.display = "flex";
+      setArea.style.width = "380px";
+      setArea.style.maxWidth = "400px";
+      setArea.style.height = "100%";
+      setArea.style.flex = "0 0 380px";
+    }
+  } else {
+    if (setArea) {
+      setArea.style.width = "100%";
+      setArea.style.maxWidth = "none";
+    }
+    applyMobileTab(State.mobileTab || "split");
   }
 
-  if (UI.settingsArea) {
+  document.querySelectorAll(".layout-toggle-btn").forEach(btn => {
+    const icon = btn.querySelector(".layout-toggle-icon");
+    const label = btn.querySelector(".layout-toggle-label");
     if (isDesktop) {
-      UI.settingsArea.style.width = '420px';
-      UI.settingsArea.style.height = '';
-      UI.settingsArea.style.display = 'flex';
+      if (icon) icon.className = "layout-toggle-icon fa-solid fa-desktop text-[10px]";
+      if (label) label.textContent = "PC";
+      btn.className = "layout-toggle-btn px-2 py-0.5 rounded-xl border border-zinc-800 bg-zinc-950 text-zinc-300 hover:text-white transition text-[10px] sm:text-[11px] font-bold flex items-center gap-1 cursor-pointer";
     } else {
-      UI.settingsArea.style.width = '100%';
-      applyMobileTab(State.mobileTab || 'split');
-    }
-  }
-
-  document.querySelectorAll('.layout-toggle-btn').forEach(btn => {
-    const icon = btn.querySelector('.layout-toggle-icon');
-    const label = btn.querySelector('.layout-toggle-label');
-    if (isDesktop) {
-      if (icon) icon.className = 'layout-toggle-icon fa-solid fa-desktop text-[10px]';
-      if (label) label.textContent = 'PC';
-      btn.className = 'layout-toggle-btn px-2 py-0.5 rounded-xl border border-zinc-800 bg-zinc-950 text-zinc-300 hover:text-white transition text-[10px] sm:text-[11px] font-bold flex items-center gap-1 cursor-pointer';
-    } else {
-      if (icon) icon.className = 'layout-toggle-icon fa-solid fa-mobile-screen text-[10px]';
-      if (label) label.textContent = 'MOB';
-      btn.className = 'layout-toggle-btn px-2 py-0.5 rounded-xl border border-amber-500/50 bg-amber-500/20 text-amber-300 hover:text-white transition text-[10px] sm:text-[11px] font-bold flex items-center gap-1 cursor-pointer';
+      if (icon) icon.className = "layout-toggle-icon fa-solid fa-mobile-screen text-[10px]";
+      if (label) label.textContent = "MOB";
+      btn.className = "layout-toggle-btn px-2 py-0.5 rounded-xl border border-amber-500/50 bg-amber-500/20 text-amber-300 hover:text-white transition text-[10px] sm:text-[11px] font-bold flex items-center gap-1 cursor-pointer";
     }
   });
 
-  if (typeof renderImpositionCanvas === 'function') {
-    setTimeout(renderImpositionCanvas, 60);
+  if (typeof renderImpositionCanvas === "function") {
+    setTimeout(renderImpositionCanvas, 40);
   }
 }
 
 /**
- * Handles mobile viewport tabs (Preview, Split, Settings).
+ * Handles mobile viewport tabs (Preview, Split, Settings) with instant switching.
  */
 function applyMobileTab(tab) {
   State.mobileTab = tab;
-  if (State.layoutMode === 'desktop') return;
 
-  const vp = UI.viewportArea;
-  const setArea = UI.settingsArea;
-  if (!vp || !setArea) return;
+  // Auto-switch layoutMode to mobile if currently in desktop view
+  if (State.layoutMode === "desktop") {
+    State.layoutMode = "mobile";
+    document.body.classList.remove("layout-desktop");
+    document.body.classList.add("layout-mobile");
+    document.querySelectorAll(".layout-toggle-btn").forEach(btn => {
+      const icon = btn.querySelector(".layout-toggle-icon");
+      const label = btn.querySelector(".layout-toggle-label");
+      if (icon) icon.className = "layout-toggle-icon fa-solid fa-mobile-screen text-[10px]";
+      if (label) label.textContent = "MOB";
+      btn.className = "layout-toggle-btn px-2 py-0.5 rounded-xl border border-amber-500/50 bg-amber-500/20 text-amber-300 hover:text-white transition text-[10px] sm:text-[11px] font-bold flex items-center gap-1 cursor-pointer";
+    });
+  }
 
-  const tabs = [
-    { btn: UI.tabBtnPreview, name: 'preview' },
-    { btn: UI.tabBtnSplit, name: 'split' },
-    { btn: UI.tabBtnSettings, name: 'settings' }
+  document.body.classList.remove("mobile-tab-preview", "mobile-tab-split", "mobile-tab-settings");
+  document.body.classList.add("mobile-tab-" + tab);
+
+  const prevArea = document.getElementById("previewArea") || UI.previewArea;
+  const setArea = document.getElementById("settingsArea") || UI.settingsArea;
+  if (!prevArea || !setArea) return;
+
+  const tabBtns = [
+    { btn: document.getElementById("tabBtnPreview") || UI.tabBtnPreview, name: "preview" },
+    { btn: document.getElementById("tabBtnSplit") || UI.tabBtnSplit, name: "split" },
+    { btn: document.getElementById("tabBtnSettings") || UI.tabBtnSettings, name: "settings" }
   ];
 
-  tabs.forEach(t => {
+  tabBtns.forEach(t => {
     if (t.btn) {
       if (t.name === tab) {
-        t.btn.className = 'flex-1 py-1 px-2 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1 bg-amber-500 text-zinc-950 shadow-sm cursor-pointer';
+        t.btn.className = "px-2 py-1 rounded-lg bg-gradient-to-r from-amber-500 to-orange-600 text-zinc-950 font-black shadow-sm transition cursor-pointer";
       } else {
-        t.btn.className = 'flex-1 py-1 px-2 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1 bg-zinc-900 text-zinc-400 hover:text-white cursor-pointer';
+        t.btn.className = "px-2 py-1 rounded-lg text-zinc-400 hover:text-white transition cursor-pointer";
       }
     }
   });
 
-  if (tab === 'preview') {
-    vp.style.display = 'flex';
-    vp.style.height = '100%';
-    vp.style.flex = '1 1 auto';
-    setArea.style.display = 'none';
-  } else if (tab === 'settings') {
-    vp.style.display = 'none';
-    setArea.style.display = 'flex';
-    setArea.style.height = '100%';
-    setArea.style.flex = '1 1 auto';
+  if (tab === "preview") {
+    prevArea.style.display = "flex";
+    prevArea.style.height = "100%";
+    prevArea.style.flex = "1 1 auto";
+    setArea.style.display = "none";
+  } else if (tab === "settings") {
+    prevArea.style.display = "none";
+    setArea.style.display = "flex";
+    setArea.style.height = "100%";
+    setArea.style.flex = "1 1 auto";
   } else {
-    // Split: 45% preview, 55% settings
-    vp.style.display = 'flex';
-    vp.style.height = '42%';
-    vp.style.flex = '0 0 42%';
-    setArea.style.display = 'flex';
-    setArea.style.height = '58%';
-    setArea.style.flex = '1 1 58%';
+    // Split: 46% preview, 54% settings
+    prevArea.style.display = "flex";
+    prevArea.style.height = "46%";
+    prevArea.style.flex = "0 0 46%";
+    setArea.style.display = "flex";
+    setArea.style.height = "54%";
+    setArea.style.flex = "1 1 54%";
   }
 
-  if (typeof renderImpositionCanvas === 'function') {
-    setTimeout(renderImpositionCanvas, 60);
-  }
-}
-
-/**
- * Updates status bar labels and metrics.
- */
-function updateStatusBadge() {
-  const isLt = State.lang !== 'en';
-  if (UI.statusModeLabel) {
-    const modeName = {
-      booklet: isLt ? 'KNYGELĖ (BALNAS)' : 'BOOKLET (SADDLE)',
-      nup: isLt ? 'DAUGINIMAS (N-UP)' : 'N-UP (STEP & REPEAT)',
-      cutstack: isLt ? 'PJAUK IR KRAUK' : 'CUT & STACK',
-      signatures: isLt ? 'LANKAI (SIGNATURES)' : 'SIGNATURES',
-      manual: isLt ? 'RANKINIS (MANUAL)' : 'MANUAL SLOTS'
-    }[State.mode] || State.mode.toUpperCase();
-    UI.statusModeLabel.innerHTML = `<i class="fa-solid fa-shapes mr-1"></i>${modeName}`;
-  }
-
-  if (UI.statusGridLabel) {
-    const itemsPerSheet = State.cols * State.rows;
-    UI.statusGridLabel.textContent = `${State.cols} × ${State.rows} (${itemsPerSheet} psl./lanke)`;
-  }
-
-  if (UI.statusBleedBadge) {
-    UI.statusBleedBadge.textContent = State.bleedAsymmetric 
-      ? `UŽLAIDA: T${State.bleedTop}/B${State.bleedBottom}/L${State.bleedLeft}/R${State.bleedRight}mm`
-      : `UŽLAIDA: ${State.bleedMm}mm`;
-  }
-
-  if (UI.canvasDimInfo) {
-    UI.canvasDimInfo.textContent = `${State.sheetPreset} • ${State.sheetWidth}×${State.sheetHeight} mm`;
-  }
-
-  updateSideButtonsUI();
-  updateSheetNavigationUI();
-}
-
-/**
- * Updates side buttons UI state (Front / Back).
- */
-function updateSideButtonsUI() {
-  const isFront = State.currentSide === 'front';
-  if (UI.btnSideFront) {
-    UI.btnSideFront.className = isFront 
-      ? 'px-2.5 py-0.5 rounded-lg font-bold text-zinc-950 bg-amber-400 text-[10px] sm:text-[11px] shadow transition cursor-pointer'
-      : 'px-2.5 py-0.5 rounded-lg text-zinc-400 hover:text-white text-[10px] sm:text-[11px] transition cursor-pointer';
-  }
-  if (UI.btnSideBack) {
-    if (State.printStyle === 'single') {
-      UI.btnSideBack.disabled = true;
-      UI.btnSideBack.className = 'px-2.5 py-0.5 rounded-lg text-zinc-600 text-[10px] sm:text-[11px] opacity-40 cursor-not-allowed';
-    } else {
-      UI.btnSideBack.disabled = false;
-      UI.btnSideBack.className = !isFront 
-        ? 'px-2.5 py-0.5 rounded-lg font-bold text-zinc-950 bg-amber-400 text-[10px] sm:text-[11px] shadow transition cursor-pointer'
-        : 'px-2.5 py-0.5 rounded-lg text-zinc-400 hover:text-white text-[10px] sm:text-[11px] transition cursor-pointer';
-    }
-  }
-
-  if (UI.statusSideLabel) {
-    if (State.printStyle === 'single') {
-      UI.statusSideLabel.textContent = 'VIENPUSĖ (SIMPLEX)';
-    } else {
-      UI.statusSideLabel.textContent = isFront ? 'PRIEKIS (1-oji PUSĖ)' : 'NUGARĖLĖ (2-oji PUSĖ)';
-    }
-  }
-}
-
-/**
- * Updates sheet pager counter and button states.
- */
-function updateSheetNavigationUI() {
-  if (UI.sheetCounterDisplay) {
-    UI.sheetCounterDisplay.textContent = `${State.currentSheetIndex + 1} / ${Math.max(1, State.totalSheets)}`;
-  }
-  if (UI.btnPrevSheet) {
-    UI.btnPrevSheet.disabled = State.currentSheetIndex <= 0;
-    UI.btnPrevSheet.classList.toggle('opacity-40', State.currentSheetIndex <= 0);
-  }
-  if (UI.btnNextSheet) {
-    UI.btnNextSheet.disabled = State.currentSheetIndex >= State.totalSheets - 1;
-    UI.btnNextSheet.classList.toggle('opacity-40', State.currentSheetIndex >= State.totalSheets - 1);
+  if (typeof renderImpositionCanvas === "function") {
+    setTimeout(renderImpositionCanvas, 40);
   }
 }
 
@@ -249,8 +307,10 @@ function toggleAutoPlay() {
         State.currentSheetIndex++;
       } else {
         State.currentSheetIndex = 0;
-        State.currentSide = State.currentSide === 'front' ? 'back' : 'front';
-        updateSideButtonsUI();
+        if (State.printStyle !== 'single') {
+          State.currentSide = State.currentSide === 'front' ? 'back' : 'front';
+          updateSideButtonsUI();
+        }
       }
       updateSheetNavigationUI();
       if (typeof renderImpositionCanvas === 'function') renderImpositionCanvas();
@@ -281,7 +341,8 @@ function toggleGridLock() {
       cols: State.cols, rows: State.rows,
       gutterX: State.gutterX, gutterY: State.gutterY,
       autoCenter: State.autoCenter, marginTop: State.marginTop, marginSide: State.marginSide,
-      pageW: State.sourcePageWidth, pageH: State.sourcePageHeight, rotated: State.pageRotated
+      pageW: State.sourcePageWidth, pageH: State.sourcePageHeight,
+      rotated: State.pageRotated, pageRotation: State.pageRotation
     };
     showToast(State.lang === 'en' ? `Grid (${State.cols}×${State.rows}) locked! Parameters protected from recalculation.` : `Tinklelis (${State.cols}×${State.rows}) užfiksuotas! Parametrai apsaugoti nuo perskaičiavimo.`, 'success');
   } else {
@@ -353,6 +414,9 @@ function applyPreset(preset) {
   if (!preset) return;
   State.activePresetId = preset.id;
   State.mode = preset.mode || 'booklet';
+  if (State.mode !== 'manual') {
+    State.lastAutoMode = State.mode;
+  }
   State.sheetWidth = preset.sheetW || 320;
   State.sheetHeight = preset.sheetH || 450;
   State.printStyle = preset.style || 'sheetwise';
@@ -369,8 +433,10 @@ function applyPreset(preset) {
       State.sourcePageWidth = preset.pageW;
       State.sourcePageHeight = preset.pageH;
       State.pageRotated = false;
+      State.pageRotation = 0;
       if (UI.inputPageWidth) UI.inputPageWidth.value = State.sourcePageWidth;
       if (UI.inputPageHeight) UI.inputPageHeight.value = State.sourcePageHeight;
+      if (UI.pageRotationBadge) UI.pageRotationBadge.textContent = '0°';
     }
   }
 
@@ -484,9 +550,9 @@ function setupEventListeners() {
     const nextMode = State.layoutMode === 'desktop' ? 'mobile' : 'desktop';
     applyLayoutMode(nextMode);
     showToast(
-      nextMode === 'desktop' 
-        ? (State.lang === 'en' ? 'Switched to PC (Side-by-Side) Mode' : 'Įjungtas PC (Šalia) režimas') 
-        : (State.lang === 'en' ? 'Switched to Mobile (Stacked) Mode' : 'Įjungtas Mobilus (Viršus/Apačia) režimas'), 
+      nextMode === 'desktop'
+        ? (State.lang === 'en' ? 'Switched to PC (Side-by-Side) Mode' : 'Įjungtas PC (Šalia) režimas')
+        : (State.lang === 'en' ? 'Switched to Mobile (Stacked) Mode' : 'Įjungtas Mobilus (Viršus/Apačia) režimas'),
       'info'
     );
   };
@@ -510,6 +576,21 @@ function setupEventListeners() {
     UI.btnSampleDoc.addEventListener('click', () => {
       generateDemoPublication(16);
       showToast(State.lang === 'en' ? 'Generated 16-page sample publication' : 'Sugeneruotas 16 psl. demonstracinis leidinys');
+    });
+  }
+
+  // Quick Prepress Command Bar
+  if (UI.btnRunAiPrompt) {
+    UI.btnRunAiPrompt.addEventListener('click', () => {
+      runQuickPrepressCommand(UI.inputAiPrompt ? UI.inputAiPrompt.value : '');
+    });
+  }
+  if (UI.inputAiPrompt) {
+    UI.inputAiPrompt.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        runQuickPrepressCommand(UI.inputAiPrompt.value);
+      }
     });
   }
 
@@ -539,6 +620,7 @@ function setupEventListeners() {
       stopAutoPlay();
       State.currentSide = 'front';
       updateSideButtonsUI();
+      updateSheetNavigationUI();
       if (typeof renderImpositionCanvas === 'function') renderImpositionCanvas();
     });
   }
@@ -548,6 +630,7 @@ function setupEventListeners() {
       stopAutoPlay();
       State.currentSide = 'back';
       updateSideButtonsUI();
+      updateSheetNavigationUI();
       if (typeof renderImpositionCanvas === 'function') renderImpositionCanvas();
     });
   }
@@ -557,6 +640,8 @@ function setupEventListeners() {
   const handleLanguageToggle = (targetLang) => {
     State.lang = targetLang || (State.lang === 'lt' ? 'en' : 'lt');
     applyUiTranslations(State.lang);
+    updateStatusBadge();
+    updateSheetNavigationUI();
     if (typeof renderImpositionCanvas === 'function') renderImpositionCanvas();
   };
   if (UI.btnLangLt) UI.btnLangLt.addEventListener('click', () => handleLanguageToggle('lt'));
@@ -566,16 +651,23 @@ function setupEventListeners() {
 
   if (UI.btnRotatePage) {
     UI.btnRotatePage.addEventListener('click', () => {
-      const tempW = State.sourcePageWidth;
-      State.sourcePageWidth = State.sourcePageHeight;
-      State.sourcePageHeight = tempW;
-      State.pageRotated = !State.pageRotated;
-      if (UI.inputPageWidth) UI.inputPageWidth.value = Math.round(State.sourcePageWidth);
-      if (UI.inputPageHeight) UI.inputPageHeight.value = Math.round(State.sourcePageHeight);
+      State.combinationLayout = null;
+      const nextRot = (getGlobalPageRotation() + 90) % 360;
+      State.pageRotation = nextRot;
+      State.pageRotated = (nextRot === 90 || nextRot === 270);
+      const effW = State.pageRotated ? State.sourcePageHeight : State.sourcePageWidth;
+      const effH = State.pageRotated ? State.sourcePageWidth : State.sourcePageHeight;
+      if (UI.inputPageWidth) UI.inputPageWidth.value = Math.round(effW);
+      if (UI.inputPageHeight) UI.inputPageHeight.value = Math.round(effH);
+      if (UI.pageRotationBadge) UI.pageRotationBadge.textContent = `${nextRot}°`;
       updateStatusBadge();
       recalculateImposition();
       if (typeof renderImpositionCanvas === 'function') renderImpositionCanvas();
-      showToast(State.lang === 'en' ? `Page rotated: ${Math.round(State.sourcePageWidth)}×${Math.round(State.sourcePageHeight)} mm` : `Gaminys pasuktas: ${Math.round(State.sourcePageWidth)}×${Math.round(State.sourcePageHeight)} mm`);
+      showToast(
+        State.lang === 'en'
+          ? `Page rotated ${nextRot}°: ${Math.round(effW)}×${Math.round(effH)} mm`
+          : `Gaminys pasuktas ${nextRot}°: ${Math.round(effW)}×${Math.round(effH)} mm`
+      );
     });
   }
 
@@ -605,27 +697,120 @@ function setupEventListeners() {
 
   if (UI.selectMode) {
     UI.selectMode.addEventListener('change', (e) => {
-      State.mode = e.target.value;
+      const nextMode = e.target.value;
+      const prevMode = State.mode;
+      if (nextMode === 'manual' && prevMode !== 'manual') {
+        State.lastAutoMode = prevMode;
+        seedManualSlotsFromAuto(prevMode, false);
+        showToast(State.lang === 'en' ? 'Manual mode active: click any slot on the sheet or in the list to edit' : 'Rankinis režimas: spauskite ant langelio lanke arba sąraše', 'info');
+      } else if (nextMode !== 'manual') {
+        State.lastAutoMode = nextMode;
+      }
+      State.mode = nextMode;
+      updateStatusBadge();
       recalculateImposition();
       if (typeof renderImpositionCanvas === 'function') renderImpositionCanvas();
     });
   }
 
-  if (UI.inputPageWidth) {
-    UI.inputPageWidth.addEventListener('input', (e) => {
-      State.sourcePageWidth = parseFloat(e.target.value) || 148;
-      updateStatusBadge();
-      recalculateImposition();
+  if (UI.btnSeedManualSlots) {
+    UI.btnSeedManualSlots.addEventListener('click', () => {
+      const baseMode = State.lastAutoMode || 'booklet';
+      seedManualSlotsFromAuto(baseMode, true);
+      updateSheetNavigationUI();
       if (typeof renderImpositionCanvas === 'function') renderImpositionCanvas();
+      showToast(State.lang === 'en' ? 'Slots populated from automatic layout' : 'Langeliai užpildyti pagal automatinį išdėstymą', 'success');
     });
   }
-  if (UI.inputPageHeight) {
-    UI.inputPageHeight.addEventListener('input', (e) => {
-      State.sourcePageHeight = parseFloat(e.target.value) || 210;
-      updateStatusBadge();
-      recalculateImposition();
+
+  if (UI.btnClearManualSlots) {
+    UI.btnClearManualSlots.addEventListener('click', () => {
+      const s = State.currentSheetIndex;
+      const side = State.currentSide;
+      for (let r = 0; r < State.rows; r++) {
+        for (let c = 0; c < State.cols; c++) {
+          const key = `${c}_${r}_${side}_${s}`;
+          State.manualSlots[key] = { page: null, rot: 0, rotation: 0, offsetX: 0, offsetY: 0 };
+        }
+      }
+      updateSheetNavigationUI();
       if (typeof renderImpositionCanvas === 'function') renderImpositionCanvas();
+      showToast(State.lang === 'en' ? 'Current sheet side slots cleared' : 'Šios lanko pusės langeliai išvalyti', 'info');
     });
+  }
+
+  if (UI.btnAddManualSheet) {
+    UI.btnAddManualSheet.addEventListener('click', () => {
+      if (State.mode !== 'manual') {
+        State.lastAutoMode = State.mode;
+        State.mode = 'manual';
+        if (UI.selectMode) UI.selectMode.value = 'manual';
+      }
+      State.totalSheets = Math.max(1, (State.totalSheets || 1) + 1);
+      const newSheetIdx = State.totalSheets - 1;
+      for (const side of ['front', 'back']) {
+        for (let r = 0; r < State.rows; r++) {
+          for (let c = 0; c < State.cols; c++) {
+            const key = `${c}_${r}_${side}_${newSheetIdx}`;
+            if (!State.manualSlots[key]) {
+              State.manualSlots[key] = { page: null, rot: 0, rotation: 0, offsetX: 0, offsetY: 0 };
+            }
+          }
+        }
+      }
+      State.currentSheetIndex = newSheetIdx;
+      updateStatusBadge();
+      updateSheetNavigationUI();
+      if (typeof renderImpositionCanvas === 'function') renderImpositionCanvas();
+      showToast(State.lang === 'en' ? `Added Sheet #${State.totalSheets}` : `Pridėtas lankas #${State.totalSheets}`, 'success');
+    });
+  }
+
+  if (UI.btnRemoveManualSheet) {
+    UI.btnRemoveManualSheet.addEventListener('click', () => {
+      if ((State.totalSheets || 1) <= 1) {
+        showToast(State.lang === 'en' ? 'At least 1 sheet is required' : 'Privalo likti bent 1 lankas', 'info');
+        return;
+      }
+      const removedIdx = State.totalSheets - 1;
+      for (const side of ['front', 'back']) {
+        for (let r = 0; r < State.rows; r++) {
+          for (let c = 0; c < State.cols; c++) {
+            delete State.manualSlots[`${c}_${r}_${side}_${removedIdx}`];
+          }
+        }
+      }
+      State.totalSheets = Math.max(1, State.totalSheets - 1);
+      if (State.currentSheetIndex >= State.totalSheets) {
+        State.currentSheetIndex = State.totalSheets - 1;
+      }
+      updateStatusBadge();
+      updateSheetNavigationUI();
+      if (typeof renderImpositionCanvas === 'function') renderImpositionCanvas();
+      showToast(State.lang === 'en' ? `Removed Sheet #${removedIdx + 1}` : `Pašalintas lankas #${removedIdx + 1}`, 'info');
+    });
+  }
+
+  const syncPageDimensionsFromInputs = () => {
+    const wVal = Math.max(10, parseFloat(UI.inputPageWidth?.value) || 148);
+    const hVal = Math.max(10, parseFloat(UI.inputPageHeight?.value) || 210);
+    if (State.pageRotated) {
+      State.sourcePageHeight = wVal;
+      State.sourcePageWidth = hVal;
+    } else {
+      State.sourcePageWidth = wVal;
+      State.sourcePageHeight = hVal;
+    }
+    updateStatusBadge();
+    recalculateImposition();
+    if (typeof renderImpositionCanvas === 'function') renderImpositionCanvas();
+  };
+
+  if (UI.inputPageWidth) {
+    UI.inputPageWidth.addEventListener('input', syncPageDimensionsFromInputs);
+  }
+  if (UI.inputPageHeight) {
+    UI.inputPageHeight.addEventListener('input', syncPageDimensionsFromInputs);
   }
 
   document.querySelectorAll('.quick-page-size').forEach(btn => {
@@ -636,8 +821,10 @@ function setupEventListeners() {
         State.sourcePageWidth = w;
         State.sourcePageHeight = h;
         State.pageRotated = false;
+        State.pageRotation = 0;
         if (UI.inputPageWidth) UI.inputPageWidth.value = w;
         if (UI.inputPageHeight) UI.inputPageHeight.value = h;
+        if (UI.pageRotationBadge) UI.pageRotationBadge.textContent = '0°';
         updateStatusBadge();
         recalculateImposition();
         if (typeof renderImpositionCanvas === 'function') renderImpositionCanvas();
@@ -656,6 +843,7 @@ function setupEventListeners() {
         State.sheetHeight = map[val][1];
         if (UI.inputSheetWidth) UI.inputSheetWidth.value = State.sheetWidth;
         if (UI.inputSheetHeight) UI.inputSheetHeight.value = State.sheetHeight;
+        updateStatusBadge();
         recalculateImposition();
         if (typeof renderImpositionCanvas === 'function') renderImpositionCanvas();
       }
@@ -665,6 +853,7 @@ function setupEventListeners() {
   if (UI.inputSheetWidth) {
     UI.inputSheetWidth.addEventListener('input', (e) => {
       State.sheetWidth = parseFloat(e.target.value) || 320;
+      updateStatusBadge();
       recalculateImposition();
       if (typeof renderImpositionCanvas === 'function') renderImpositionCanvas();
     });
@@ -672,6 +861,7 @@ function setupEventListeners() {
   if (UI.inputSheetHeight) {
     UI.inputSheetHeight.addEventListener('input', (e) => {
       State.sheetHeight = parseFloat(e.target.value) || 450;
+      updateStatusBadge();
       recalculateImposition();
       if (typeof renderImpositionCanvas === 'function') renderImpositionCanvas();
     });
@@ -680,6 +870,10 @@ function setupEventListeners() {
   if (UI.selectPrintStyle) {
     UI.selectPrintStyle.addEventListener('change', (e) => {
       State.printStyle = e.target.value;
+      if (State.printStyle === 'single' && State.currentSide === 'back') {
+        State.currentSide = 'front';
+      }
+      updateSideButtonsUI();
       recalculateImposition();
       if (typeof renderImpositionCanvas === 'function') renderImpositionCanvas();
     });
@@ -689,6 +883,10 @@ function setupEventListeners() {
     UI.inputCols.addEventListener('input', (e) => {
       State.combinationLayout = null;
       State.cols = Math.max(1, parseInt(e.target.value, 10) || 1);
+      if (State.mode === 'manual') {
+        seedManualSlotsFromAuto(State.lastAutoMode || 'booklet', false);
+      }
+      updateStatusBadge();
       recalculateImposition();
       if (typeof renderImpositionCanvas === 'function') renderImpositionCanvas();
     });
@@ -697,6 +895,10 @@ function setupEventListeners() {
     UI.inputRows.addEventListener('input', (e) => {
       State.combinationLayout = null;
       State.rows = Math.max(1, parseInt(e.target.value, 10) || 1);
+      if (State.mode === 'manual') {
+        seedManualSlotsFromAuto(State.lastAutoMode || 'booklet', false);
+      }
+      updateStatusBadge();
       recalculateImposition();
       if (typeof renderImpositionCanvas === 'function') renderImpositionCanvas();
     });
@@ -725,13 +927,28 @@ function setupEventListeners() {
 
   if (UI.inputMarginTop) {
     UI.inputMarginTop.addEventListener('input', (e) => {
-      State.marginTop = Math.max(0, parseFloat(e.target.value) || 0);
+      const val = parseFloat(e.target.value);
+      State.marginTop = !isNaN(val) ? Math.max(0, val) : 0;
+      State.autoCenter = false;
+      if (UI.checkAutoCenter) UI.checkAutoCenter.checked = false;
       if (typeof renderImpositionCanvas === 'function') renderImpositionCanvas();
     });
   }
   if (UI.inputMarginSide) {
     UI.inputMarginSide.addEventListener('input', (e) => {
-      State.marginSide = Math.max(0, parseFloat(e.target.value) || 0);
+      const val = parseFloat(e.target.value);
+      State.marginSide = !isNaN(val) ? Math.max(0, val) : 0;
+      State.autoCenter = false;
+      if (UI.checkAutoCenter) UI.checkAutoCenter.checked = false;
+      if (typeof renderImpositionCanvas === 'function') renderImpositionCanvas();
+    });
+  }
+
+  if (UI.inputCreep) {
+    UI.inputCreep.addEventListener('input', (e) => {
+      const val = parseFloat(e.target.value);
+      State.creepMm = !isNaN(val) ? Math.max(0, val) : 0;
+      if (UI.creepValLabel) UI.creepValLabel.textContent = `${State.creepMm.toFixed(1)} mm`;
       if (typeof renderImpositionCanvas === 'function') renderImpositionCanvas();
     });
   }
@@ -1043,26 +1260,101 @@ function setupEventListeners() {
   }
 
   // MANUAL SLOT MODAL BINDINGS
+  const readModalSlotInputs = () => {
+    const pageInput = document.getElementById('inputSlotPageNum');
+    const rawVal = pageInput ? pageInput.value.trim() : '';
+    const parsedPage = parseInt(rawVal, 10);
+    const page = (!isNaN(parsedPage) && parsedPage > 0) ? parsedPage : null;
+
+    const activeRotBtn = document.querySelector('.btn-slot-rot.bg-amber-500');
+    const rot = activeRotBtn ? normalizeRotationAngle(parseInt(activeRotBtn.getAttribute('data-rot'), 10) || 0) : 0;
+
+    const offXEl = document.getElementById('inputSlotOffsetX');
+    const offYEl = document.getElementById('inputSlotOffsetY');
+    const offsetX = offXEl ? (parseFloat(offXEl.value) || 0) : 0;
+    const offsetY = offYEl ? (parseFloat(offYEl.value) || 0) : 0;
+
+    return { page, rot, offsetX, offsetY };
+  };
+
   document.querySelectorAll('.btn-slot-rot').forEach(btn => {
     btn.addEventListener('click', (e) => {
       document.querySelectorAll('.btn-slot-rot').forEach(b => {
         b.className = 'btn-slot-rot px-2 py-1.5 rounded-lg border border-zinc-700 text-xs font-mono font-bold transition cursor-pointer text-center bg-zinc-800 text-zinc-300 hover:text-white';
       });
-      e.currentTarget.className = 'btn-slot-rot px-2 py-1.5 rounded-lg border border-amber-400 text-xs font-mono font-bold transition cursor-pointer text-center bg-amber-500 text-zinc-950';
+      e.currentTarget.className = 'btn-slot-rot px-2 py-1.5 rounded-lg border border-amber-400 text-xs font-mono font-bold transition cursor-pointer text-center bg-amber-500 text-zinc-950 shadow';
+
+      const rot = normalizeRotationAngle(parseInt(e.currentTarget.getAttribute('data-rot'), 10) || 0);
+      if (State.activeEditingSlot) {
+        const { page, offsetX, offsetY } = readModalSlotInputs();
+        const s = State.activeEditingSlot;
+        setManualSlotData(s.col, s.row, s.side, s.sheetIndex, { page, rot, offsetX, offsetY });
+        if (typeof renderManualSlotsPanel === 'function') renderManualSlotsPanel();
+        if (typeof renderImpositionCanvas === 'function') renderImpositionCanvas();
+      }
     });
   });
+
+  // Live per-slot X / Y offset inputs
+  const handleLiveModalOffsetChange = () => {
+    if (!State.activeEditingSlot) return;
+    const { page, rot, offsetX, offsetY } = readModalSlotInputs();
+    const s = State.activeEditingSlot;
+    setManualSlotData(s.col, s.row, s.side, s.sheetIndex, { page, rot, offsetX, offsetY });
+    if (typeof renderManualSlotsPanel === 'function') renderManualSlotsPanel();
+    if (typeof renderImpositionCanvas === 'function') renderImpositionCanvas();
+  };
+
+  if (UI.inputSlotOffsetX) UI.inputSlotOffsetX.addEventListener('input', handleLiveModalOffsetChange);
+  if (UI.inputSlotOffsetY) UI.inputSlotOffsetY.addEventListener('input', handleLiveModalOffsetChange);
+
+  if (UI.btnResetSlotOffset) {
+    UI.btnResetSlotOffset.addEventListener('click', () => {
+      if (UI.inputSlotOffsetX) UI.inputSlotOffsetX.value = 0;
+      if (UI.inputSlotOffsetY) UI.inputSlotOffsetY.value = 0;
+      handleLiveModalOffsetChange();
+    });
+  }
+
+  if (UI.btnSwapSlotWithTarget) {
+    UI.btnSwapSlotWithTarget.addEventListener('click', () => {
+      if (!State.activeEditingSlot || !UI.selectSwapTargetSlot) return;
+      const targetKey = UI.selectSwapTargetSlot.value;
+      if (!targetKey) return;
+      // Save current modal edits before swapping
+      const { page, rot, offsetX, offsetY } = readModalSlotInputs();
+      const s = State.activeEditingSlot;
+      setManualSlotData(s.col, s.row, s.side, s.sheetIndex, { page, rot, offsetX, offsetY });
+      swapManualSlots(s.key, targetKey);
+      // Re-open modal with updated values for the current slot
+      openSlotModalForCell(s.col, s.row);
+      if (typeof renderManualSlotsPanel === 'function') renderManualSlotsPanel();
+      if (typeof renderImpositionCanvas === 'function') renderImpositionCanvas();
+      showToast(State.lang === 'en' ? 'Slots swapped!' : 'Langeliai sukeisti vietomis!', 'success');
+    });
+  }
 
   const btnSetSlotEmpty = document.getElementById('btnSetSlotEmpty');
   if (btnSetSlotEmpty) {
     btnSetSlotEmpty.addEventListener('click', () => {
       const pageInput = document.getElementById('inputSlotPageNum');
       if (pageInput) pageInput.value = '';
+      if (State.activeEditingSlot) {
+        const { rot, offsetX, offsetY } = readModalSlotInputs();
+        const s = State.activeEditingSlot;
+        setManualSlotData(s.col, s.row, s.side, s.sheetIndex, { page: null, rot, offsetX, offsetY });
+        if (typeof renderManualSlotsPanel === 'function') renderManualSlotsPanel();
+        if (typeof renderImpositionCanvas === 'function') renderImpositionCanvas();
+      }
     });
   }
 
   const closeSlotModal = () => {
     const modal = document.getElementById('slotEditModal');
-    if (modal) modal.classList.add('hidden');
+    if (modal) {
+      modal.classList.add('hidden');
+      modal.style.display = 'none';
+    }
   };
 
   const btnCloseSlotModal = document.getElementById('btnCloseSlotModal');
@@ -1071,30 +1363,48 @@ function setupEventListeners() {
   const btnCancelSlotModal = document.getElementById('btnCancelSlotModal');
   if (btnCancelSlotModal) btnCancelSlotModal.addEventListener('click', closeSlotModal);
 
+  const saveActiveSlotConfig = () => {
+    if (!State.activeEditingSlot) {
+      closeSlotModal();
+      return;
+    }
+
+    const { page, rot, offsetX, offsetY } = readModalSlotInputs();
+    const s = State.activeEditingSlot;
+    setManualSlotData(s.col, s.row, s.side, s.sheetIndex, { page, rot, offsetX, offsetY });
+
+    closeSlotModal();
+    if (typeof renderManualSlotsPanel === 'function') renderManualSlotsPanel();
+    if (typeof renderImpositionCanvas === 'function') renderImpositionCanvas();
+
+    if (page !== null && page > State.docPageCount && State.pdfJsDoc) {
+      renderPdfPageToCache(page);
+    }
+
+    const offSummary = (Math.abs(offsetX) > 0.01 || Math.abs(offsetY) > 0.01)
+      ? ` [Δ${offsetX >= 0 ? '+' : ''}${offsetX},${offsetY >= 0 ? '+' : ''}${offsetY}mm]`
+      : '';
+    if (page !== null) {
+      showToast(`Langelis [${s.col + 1}×${s.row + 1}]: P.${page} (${rot}°)${offSummary}`);
+    } else {
+      showToast(`Langelis [${s.col + 1}×${s.row + 1}] nustatytas kaip tuščias`);
+    }
+  };
+
   const btnSaveSlotConfig = document.getElementById('btnSaveSlotConfig');
   if (btnSaveSlotConfig) {
-    btnSaveSlotConfig.addEventListener('click', () => {
-      if (!State.activeEditingSlot) {
+    btnSaveSlotConfig.addEventListener('click', saveActiveSlotConfig);
+  }
+
+  const inputSlotPageNum = document.getElementById('inputSlotPageNum');
+  if (inputSlotPageNum) {
+    inputSlotPageNum.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        saveActiveSlotConfig();
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
         closeSlotModal();
-        return;
-      }
-
-      const pageInput = document.getElementById('inputSlotPageNum');
-      const rawVal = pageInput ? pageInput.value.trim() : '';
-      const parsedPage = parseInt(rawVal, 10);
-      const page = (!isNaN(parsedPage) && parsedPage > 0) ? parsedPage : null;
-
-      const activeRotBtn = document.querySelector('.btn-slot-rot.bg-amber-500');
-      const rot = activeRotBtn ? (parseInt(activeRotBtn.getAttribute('data-rot'), 10) || 0) : 0;
-
-      State.manualSlots[State.activeEditingSlot.key] = { page, rot };
-      closeSlotModal();
-      if (typeof renderImpositionCanvas === 'function') renderImpositionCanvas();
-
-      if (page !== null) {
-        showToast(`Langelis [${State.activeEditingSlot.col + 1}×${State.activeEditingSlot.row + 1}]: P.${page} (${rot}°)`);
-      } else {
-        showToast(`Langelis [${State.activeEditingSlot.col + 1}×${State.activeEditingSlot.row + 1}] nustatytas kaip tuščias`);
       }
     });
   }
@@ -1120,12 +1430,26 @@ function setupEventListeners() {
       if (dt.files && dt.files[0]) handlePdfUpload(dt.files[0]);
     });
   }
+  // Close modals when clicking on their backdrop
+  [UI.slotEditModal, UI.savePresetModalElement, UI.saveSheetModalElement].forEach(modalEl => {
+    if (modalEl) {
+      modalEl.addEventListener('click', (e) => {
+        if (e.target === modalEl) {
+          modalEl.classList.add('hidden');
+          if (modalEl.id === 'slotEditModal') modalEl.style.display = 'none';
+        }
+      });
+    }
+  });
 }
 
 /**
- * Global App Initialization on DOM ready.
+ * Global App Initialization (safe whether DOMContentLoaded has already fired or not).
  */
-window.addEventListener('DOMContentLoaded', () => {
+function initImpozitorApp() {
+  if (window.__impozitorInitialized) return;
+  window.__impozitorInitialized = true;
+
   cacheDomElements();
   setupZoomAndPanHandlers();
   setupEventListeners();
@@ -1134,13 +1458,41 @@ window.addEventListener('DOMContentLoaded', () => {
   generateDemoPublication(16);
 
   const isNarrowMobile = window.innerWidth < 768 || /Android|iPhone|iPod|Mobile/i.test(navigator.userAgent);
-  applyLayoutMode(isNarrowMobile ? 'mobile' : 'desktop');
+  applyLayoutMode(isNarrowMobile ? "mobile" : "desktop");
+
+  // Multi-phase auto-render on initialization to guarantee immediate canvas rendering
+  renderImpositionCanvas();
+  requestAnimationFrame(renderImpositionCanvas);
+  setTimeout(renderImpositionCanvas, 50);
+  setTimeout(renderImpositionCanvas, 150);
+  setTimeout(renderImpositionCanvas, 350);
+  setTimeout(renderImpositionCanvas, 700);
+
+  // Auto-render when viewportContainer size updates
+  const vpCont = document.getElementById("viewportContainer");
+  if (vpCont && typeof ResizeObserver !== "undefined") {
+    new ResizeObserver(() => {
+      if (typeof renderImpositionCanvas === "function") {
+        renderImpositionCanvas();
+      }
+    }).observe(vpCont);
+  }
+}
+
+if (document.readyState === "loading") {
+  window.addEventListener("DOMContentLoaded", initImpozitorApp);
+} else {
+  initImpozitorApp();
+}
+
+window.addEventListener("load", () => {
+  initImpozitorApp();
+  if (typeof renderImpositionCanvas === "function") {
+    renderImpositionCanvas();
+    setTimeout(renderImpositionCanvas, 100);
+  }
 });
 
-window.addEventListener('load', () => {
-  if (typeof renderImpositionCanvas === 'function') renderImpositionCanvas();
-});
-
-window.addEventListener('resize', () => {
-  if (typeof renderImpositionCanvas === 'function') renderImpositionCanvas();
+window.addEventListener("resize", () => {
+  if (typeof renderImpositionCanvas === "function") renderImpositionCanvas();
 });
